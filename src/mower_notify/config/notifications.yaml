@@ -1,0 +1,41 @@
+mower_notify:
+  # Chaque événement a : title, message (avec {placeholders}), tags (emojis ntfy.sh), priority
+  # Placeholders disponibles :
+  #   emergency       : {reason}
+  #   emergency_cleared : {state}
+  #   stuck           : {area}, {path}
+  #   docking_success : (aucun)
+  #   docking_failed  : (aucun)
+  #
+  # Liste des emojis ntfy.sh : https://docs.ntfy.sh/emojis/
+  # Priorités : min, low, default, high, urgent
+
+  emergency:
+    title: "Urgence !"
+    message: "Le robot s'est arrêté : {reason}"
+    tags: [rotating_light, warning]
+    priority: urgent
+
+  emergency_cleared:
+    title: "Urgence levée"
+    message: "Le robot reprend (mode : {state})"
+    tags: [white_check_mark]
+    priority: high
+
+  stuck:
+    title: "Robot bloqué"
+    message: "Bloqué en zone {area}, chemin {path} — intervention peut-être nécessaire"
+    tags: [warning, seedling]
+    priority: high
+
+  docking_success:
+    title: "En charge"
+    message: "Docking réussi, le robot est en charge"
+    tags: [white_check_mark, battery]
+    priority: default
+
+  docking_failed:
+    title: "Échec du docking"
+    message: "Le robot n'a pas rejoint le chargeur — intervention requise"
+    tags: [x, battery]
+    priority: high

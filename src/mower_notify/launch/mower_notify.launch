@@ -2,5 +2,8 @@
     <node pkg="mower_notify" type="mower_notify.py" name="mower_notify" output="screen" respawn="true" respawn_delay="10">
         <!-- ntfy.sh topic URL. Override with OM_NTFY_URL env var or set directly here. -->
         <param name="ntfy_url" value="$(optenv OM_NTFY_URL https://ntfy.sh/mower-quiet-lynx)"/>
+        <!-- Notification templates: title, message, tags, priority per event.
+             Edit config/notifications.yaml to customize without touching Python code. -->
+        <rosparam file="$(find mower_notify)/config/notifications.yaml" command="load"/>
     </node>
 </launch>
