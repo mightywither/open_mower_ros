@@ -87,11 +87,29 @@ class MowerNotifier:
     def _load_templates(self):
         import copy
         templates = copy.deepcopy(DEFAULT_TEMPLATES)
+
+        # 1. Override from ROS params (loaded via launch file rosparam)
         for key in templates:
             for field in ("title", "message", "tags", "priority"):
                 param = f"~notifications/{key}/{field}"
                 if rospy.has_param(param):
                     templates[key][field] = rospy.get_param(param)
+
+        # 2. Override from /data/params/mower_notify.yaml (host-mounted, no rebuild needed)
+        override_path = "/data/params/mower_notify.yaml"
+        try:
+            import yaml
+            with open(override_path) as f:
+                overrides = yaml.safe_load(f) or {}
+            for key, fields in overrides.get("notifications", {}).items():
+                if key in templates and isinstance(fields, dict):
+                    templates[key].update(fields)
+            rospy.loginfo(f"mower_notify: loaded overrides from {override_path}")
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            rospy.logwarn(f"mower_notify: could not load {override_path}: {e}")
+
         return templates
 
     def _on_emergency(self, msg):
