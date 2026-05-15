@@ -167,8 +167,8 @@ export function Dashboard() {
                   <span className="text-base">{EVENT_ICONS[ev.type] ?? '📋'}</span>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium text-white">{ev.type}</div>
-                    {ev.state && (
-                      <div className="truncate text-xs text-slate-400">{String(ev.state)}</div>
+                    {typeof ev.state === 'string' && ev.state && (
+                      <div className="truncate text-xs text-slate-400">{ev.state}</div>
                     )}
                   </div>
                   <div className="shrink-0 text-xs text-slate-500">{formatDate(ev.t)}</div>

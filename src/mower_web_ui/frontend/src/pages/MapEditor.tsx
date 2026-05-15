@@ -6,7 +6,6 @@ import { Layers, MapPin, Navigation, AlertTriangle, Anchor } from 'lucide-react'
 import { useMapStore, type MapArea, type MapPoint } from '../store/mapStore'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
-import { cn } from '../lib/utils'
 
 function toLatLng(p: MapPoint): L.LatLngTuple {
   return [-p.y, p.x]

@@ -2,7 +2,7 @@
 FROM node:20-alpine AS frontend-build
 WORKDIR /app
 COPY src/mower_web_ui/frontend/package*.json ./
-RUN npm ci
+RUN npm install --no-audit --no-fund
 COPY src/mower_web_ui/frontend/ ./
 RUN npm run build
 
