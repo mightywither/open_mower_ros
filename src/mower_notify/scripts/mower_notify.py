@@ -9,16 +9,25 @@ from mower_msgs.msg import HighLevelStatus, Emergency
 DEFAULT_NTFY_URL = "https://ntfy.sh/mower-quiet-lynx"
 
 
+_PRIORITY_MAP = {"urgent": 5, "high": 4, "default": 3, "low": 2, "min": 1}
+
+
 def _post_notification(url, message, priority, title):
     try:
+        import json as _json
+        # Extract topic from URL (last path segment) for the JSON body
+        topic = url.rstrip("/").split("/")[-1]
+        payload = _json.dumps({
+            "topic": topic,
+            "message": message,
+            "title": title,
+            "priority": _PRIORITY_MAP.get(priority, 3),
+            "tags": ["robot"],
+        }).encode("utf-8")
         req = urllib.request.Request(
             url,
-            data=message.encode("utf-8"),
-            headers={
-                "Title": title,
-                "Priority": priority,
-                "Tags": "robot",
-            },
+            data=payload,
+            headers={"Content-Type": "application/json"},
             method="POST",
         )
         urllib.request.urlopen(req, timeout=10)
