@@ -1,3 +1,13 @@
+# Build stage for the React/Vite web UI
+FROM node:20-alpine AS frontend-build
+WORKDIR /app
+COPY src/mower_web_ui/frontend/package*.json ./
+RUN npm ci
+COPY src/mower_web_ui/frontend/ ./
+RUN npm run build
+
+####################################################################################################
+
 # Lean image without nginx and mosquitto for OSv2 (OS-level compose provides services)
 FROM docker.io/ros:noetic-ros-base-focal AS base
 ENV DEBIAN_FRONTEND=noninteractive
@@ -71,6 +81,10 @@ WORKDIR /opt/open_mower_ros
 RUN bash -c "source /opt/ros/$ROS_DISTRO/setup.bash && cd /opt/open_mower_ros/src && catkin_init_workspace && cd .. && source /opt/prebuilt/slic3r_coverage_planner/setup.bash && catkin_make -DCATKIN_BLACKLIST_PACKAGES=slic3r_coverage_planner"
 
 RUN echo "export OM_SOFTWARE_VERSION=$(git describe --tags || git describe --always || echo \"v0.0.0\")" > version_info.env
+
+# Copy compiled web UI into the web directory served by nginx
+RUN mkdir -p /opt/open_mower_ros/web
+COPY --from=frontend-build /app/dist/ /opt/open_mower_ros/web/
 
 RUN mkdir -p /config
 COPY ./docker/assets/rosconsole.config /config/rosconsole.config

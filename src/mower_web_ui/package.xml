@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>mower_web_ui</name>
+  <version>0.1.0</version>
+  <description>OpenMower web GUI — React/Vite frontend served by nginx</description>
+  <maintainer email="user@example.com">OpenMower</maintainer>
+  <license>GPL-3.0</license>
+  <buildtool_depend>catkin</buildtool_depend>
+</package>
