@@ -5,7 +5,7 @@ import { useMqttStore } from '../store/mqttStore'
 import { Card, CardTitle, CardContent, CardHeader } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { Progress } from '../components/ui/progress'
-import { cn, formatDate } from '../lib/utils'
+import { cn, formatDate } from '../shared/utils'
 
 const STATE_STYLES: Record<string, { label: string; badge: string; dot: string }> = {
   IDLE: { label: 'En veille', badge: 'secondary', dot: 'bg-slate-400' },

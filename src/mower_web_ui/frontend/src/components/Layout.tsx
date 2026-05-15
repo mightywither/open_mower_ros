@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 import { useMqttStore } from '../store/mqttStore'
 import { useRobotStore } from '../store/robotStore'
-import { cn } from '../lib/utils'
+import { cn } from '../shared/utils'
 
 const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Accueil' },

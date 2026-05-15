@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useEventsStore, type MowerEvent } from '../store/eventsStore'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
-import { formatDate } from '../lib/utils'
+import { formatDate } from '../shared/utils'
 
 const EVENT_META: Record<string, { icon: string; label: string; badge: 'default' | 'destructive' | 'warning' | 'secondary' }> = {
   EMERGENCY: { icon: '🚨', label: 'Urgence', badge: 'destructive' },
