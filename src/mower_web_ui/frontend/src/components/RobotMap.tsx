@@ -93,6 +93,8 @@ export interface RobotMapProps {
   onDockClick?: () => void
   /** Highlight a specific area id (e.g. selected to mow). */
   highlightedAreaId?: string | null
+  /** Draw the robot trail as a thick semi-transparent coverage path. */
+  coverage?: boolean
   className?: string
 }
 
@@ -102,6 +104,7 @@ export function RobotMap({
   onAreaClick,
   onDockClick,
   highlightedAreaId,
+  coverage = false,
   className,
 }: RobotMapProps) {
   const areas = useMapStore((s) => s.areas)
@@ -150,6 +153,20 @@ export function RobotMap({
           />
         )
       })}
+
+      {/* Coverage: thick semi-transparent path approximating mown area from the trail. */}
+      {coverage && trailLatLngs.length > 1 && (
+        <Polyline
+          positions={trailLatLngs}
+          pathOptions={{
+            color: '#34d399',
+            weight: 18,
+            opacity: 0.25,
+            lineCap: 'round',
+            lineJoin: 'round',
+          }}
+        />
+      )}
 
       {/* Travelled trail */}
       {showTrail && trailLatLngs.length > 1 && (

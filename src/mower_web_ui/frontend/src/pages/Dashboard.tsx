@@ -1,14 +1,47 @@
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Battery, Satellite, MapPin, Droplets, Zap, Activity, Clock, Maximize2 } from 'lucide-react'
+import { Battery, Satellite, MapPin, Droplets, Zap, Activity, Clock, Maximize2, Hourglass } from 'lucide-react'
 import { useRobotStore } from '../store/robotStore'
 import { useEventsStore } from '../store/eventsStore'
 import { useMqttStore } from '../store/mqttStore'
+import { useStatsStore } from '../store/statsStore'
 import { Card, CardTitle, CardContent, CardHeader } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { Progress } from '../components/ui/progress'
 import { RobotMap } from '../components/RobotMap'
 import { QuickActions } from '../components/QuickActions'
-import { cn, formatDate } from '../shared/utils'
+import { cn, formatDate, formatDuration } from '../shared/utils'
+
+const MOWING_STATES = new Set(['AUTONOMOUS', 'MOWING'])
+
+/**
+ * Honest estimate of remaining mowing time. Prefers elapsed session time
+ * (from stats current.session_start_iso) divided by progress; falls back to
+ * null when there isn't enough signal. It is intentionally rough.
+ */
+function useEstimatedRemaining(
+  isMowing: boolean,
+  progress: number,
+  sessionStartIso: string | null,
+): number | null {
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    if (!isMowing) return
+    const t = setInterval(() => setNow(Date.now()), 5000)
+    return () => clearInterval(t)
+  }, [isMowing])
+
+  return useMemo(() => {
+    if (!isMowing || progress <= 0.02 || progress >= 0.999) return null
+    if (!sessionStartIso) return null
+    const start = Date.parse(sessionStartIso)
+    if (Number.isNaN(start)) return null
+    const elapsed = Math.max(0, (now - start) / 1000)
+    if (elapsed < 5) return null
+    const total = elapsed / progress
+    return Math.max(0, total - elapsed)
+  }, [isMowing, progress, sessionStartIso, now])
+}
 
 const STATE_STYLES: Record<string, { label: string; badge: string; dot: string }> = {
   IDLE: { label: 'En veille', badge: 'secondary', dot: 'bg-slate-400' },
@@ -48,7 +81,15 @@ export function Dashboard() {
     useRobotStore()
   const connected = useMqttStore((s) => s.connected)
   const events = useEventsStore((s) => s.events)
+  const statsCurrent = useStatsStore((s) => s.current)
   const info = stateInfo(state, emergency)
+
+  const isMowing = MOWING_STATES.has(state) && !emergency
+  const remaining = useEstimatedRemaining(
+    isMowing,
+    actionProgress,
+    statsCurrent.session_start_iso,
+  )
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -172,6 +213,32 @@ export function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Estimated remaining time (only while mowing) */}
+      {isMowing && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-1.5">
+              <Hourglass size={13} /> Temps restant estimé
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {remaining !== null ? (
+              <>
+                <div className="text-2xl font-bold text-white">≈ {formatDuration(remaining)}</div>
+                <div className="mt-1 text-xs text-slate-500">
+                  Estimation approximative basée sur la progression ({(actionProgress * 100).toFixed(0)} %)
+                  et le temps écoulé.
+                </div>
+              </>
+            ) : (
+              <div className="text-sm text-slate-500">
+                Estimation indisponible (progression insuffisante pour le moment).
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Recent events */}
       <Card>

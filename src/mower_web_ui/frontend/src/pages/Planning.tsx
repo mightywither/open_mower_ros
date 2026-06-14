@@ -1,6 +1,8 @@
-import { Plus, Trash2, Play, Home, CalendarClock, Power } from 'lucide-react'
+import { useMemo } from 'react'
+import { Plus, Trash2, Play, Home, CalendarClock, Power, MapPin } from 'lucide-react'
 import { useMqttStore } from '../store/mqttStore'
 import { useSchedulerStore, type ScheduleEntry } from '../store/schedulerStore'
+import { useMapStore } from '../store/mapStore'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
 
@@ -14,6 +16,13 @@ export function Planning() {
   const publish = useMqttStore((s) => s.publish)
   const connected = useMqttStore((s) => s.connected)
   const { enabled, schedule, loaded } = useSchedulerStore()
+  const areas = useMapStore((s) => s.areas)
+
+  // Mow areas only; their position in this list IS the area_index.
+  const mowAreas = useMemo(
+    () => areas.filter((a) => a.properties.type === 'mow'),
+    [areas],
+  )
 
   function pushSchedule(next: ScheduleEntry[]) {
     publish('scheduler/cmd', JSON.stringify({ cmd: 'set_schedule', schedule: next }))
@@ -26,7 +35,15 @@ export function Planning() {
   function addEntry() {
     pushSchedule([
       ...schedule,
-      { id: newId(), days: [0, 1, 2, 3, 4], start: '10:00', end: null, enabled: true },
+      {
+        id: newId(),
+        days: [0, 1, 2, 3, 4],
+        start: '10:00',
+        end: null,
+        enabled: true,
+        area_index: null,
+        area_name: '',
+      },
     ])
   }
 
@@ -43,6 +60,19 @@ export function Planning() {
       ? entry.days.filter((d) => d !== day)
       : [...entry.days, day].sort((a, b) => a - b)
     updateEntry(entry.id, { days })
+  }
+
+  function setEntryArea(entry: ScheduleEntry, value: string) {
+    if (value === '') {
+      updateEntry(entry.id, { area_index: null, area_name: '' })
+      return
+    }
+    const idx = Number(value)
+    const area = mowAreas[idx]
+    updateEntry(entry.id, {
+      area_index: idx,
+      area_name: area?.properties.name ?? '',
+    })
   }
 
   if (!connected) {
@@ -149,6 +179,24 @@ export function Planning() {
                 <span className="text-xs text-slate-500">(optionnel → retour base)</span>
               </label>
             </div>
+
+            {/* Target mow area */}
+            <label className="flex items-center gap-2 text-sm text-slate-300">
+              <MapPin size={14} className="shrink-0 text-slate-400" />
+              Zone
+              <select
+                value={entry.area_index ?? ''}
+                onChange={(e) => setEntryArea(entry, e.target.value)}
+                className="flex-1 rounded-lg border border-surface-2 bg-surface-2 px-2 py-1 text-white focus:border-emerald-500 focus:outline-none"
+              >
+                <option value="">Toutes les zones</option>
+                {mowAreas.map((a, idx) => (
+                  <option key={a.id} value={idx}>
+                    {a.properties.name || `Zone #${idx}`}
+                  </option>
+                ))}
+              </select>
+            </label>
 
             <div className="flex items-center justify-between">
               <Button

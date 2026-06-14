@@ -76,21 +76,27 @@ export function SensorsPanel() {
                 {ids.map((id) => {
                   const info = infos[id]
                   const val = values[id]
-                  const critical = val && sensorSeverity(info, val.value) === 'critical'
+                  const hasValue =
+                    !!val && !(typeof val.value === 'number' && Number.isNaN(val.value))
+                  const critical = hasValue && sensorSeverity(info, val.value) === 'critical'
                   return (
                     <div
                       key={id}
                       className={`rounded-lg border px-3 py-2 ${
-                        critical ? 'border-red-700 bg-red-950/40' : 'border-surface-2 bg-surface-2/50'
+                        critical
+                          ? 'border-red-700 bg-red-950/40'
+                          : hasValue
+                            ? 'border-surface-2 bg-surface-2/50'
+                            : 'border-surface-2/60 bg-surface-2/20 opacity-50'
                       }`}
                     >
                       <div className="truncate text-xs text-slate-400">{info.sensor_name}</div>
                       <div
                         className={`mt-0.5 text-lg font-semibold ${
-                          critical ? 'text-red-400' : 'text-white'
+                          critical ? 'text-red-400' : hasValue ? 'text-white' : 'text-slate-500'
                         }`}
                       >
-                        {val ? formatValue(info, val) : '—'}
+                        {hasValue ? formatValue(info, val) : 'N/A'}
                       </div>
                     </div>
                   )
