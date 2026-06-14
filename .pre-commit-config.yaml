@@ -23,4 +23,5 @@ repos:
   hooks:
     - id: clang-format
       args: [--style=file,-i]
-      exclude: '\.json$'
+      # clang-format also handles JS/JSON by default — keep it off the web UI.
+      exclude: '(\.json$|^src/mower_web_ui/)'
