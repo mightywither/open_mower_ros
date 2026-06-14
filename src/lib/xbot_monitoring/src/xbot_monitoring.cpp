@@ -466,7 +466,8 @@ void subscribe_to_sensor(std::string topic, std::vector<ros::Subscriber> &sensor
         case xbot_msgs::SensorInfo::TYPE_DOUBLE: {
             ros::Subscriber s = n->subscribe<xbot_msgs::SensorDataDouble>(data_topic, 10, [info = sensor](
                     const xbot_msgs::SensorDataDouble::ConstPtr &msg) {
-                try_publish("sensors/" + info.sensor_id + "/data", std::to_string(msg->data));
+                // Retain so late web subscribers immediately get the last value.
+                try_publish("sensors/" + info.sensor_id + "/data", std::to_string(msg->data), true);
 
                 json data;
                 data["d"] = msg->data;
@@ -479,7 +480,8 @@ void subscribe_to_sensor(std::string topic, std::vector<ros::Subscriber> &sensor
         case xbot_msgs::SensorInfo::TYPE_STRING: {
             ros::Subscriber s = n->subscribe<xbot_msgs::SensorDataString>(data_topic, 10, [info = sensor](
                     const xbot_msgs::SensorDataString::ConstPtr &msg) {
-                try_publish("sensors/" + info.sensor_id + "/data", msg->data);
+                // Retain so late web subscribers immediately get the last value.
+                try_publish("sensors/" + info.sensor_id + "/data", msg->data, true);
 
                 json data;
                 data["d"] = msg->data;

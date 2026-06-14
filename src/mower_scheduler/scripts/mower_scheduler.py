@@ -21,6 +21,7 @@ from datetime import datetime, timedelta
 
 import rospy
 from std_msgs.msg import String
+from mower_msgs.msg import HighLevelStatus
 
 import paho.mqtt.client as mqtt
 import dynamic_reconfigure.client
@@ -30,6 +31,13 @@ CMD_TOPIC = "scheduler/cmd"
 
 ACTION_START = "mower_logic:idle/start_mowing"
 ACTION_HOME = "mower_logic:idle/go_home"
+ACTION_SKIP_AREA = "mower_logic:mowing/skip_area"
+
+# dynamic_reconfigure params we expose/control, with their valid ranges.
+PARAM_RANGES = {
+    "automatic_mode": (0, 2),
+    "rain_mode": (0, 3),
+}
 
 
 def params_path():
@@ -47,13 +55,24 @@ class MowerScheduler:
 
         # Persisted state
         self._enabled = True
-        self._schedule = []  # list of {id, days:[0-6 Mon..Sun], start:"HH:MM", end:"HH:MM"|None, enabled}
+        # schedule entry: {id, days:[0-6 Mon..Sun], start:"HH:MM", end:"HH:MM"|None,
+        #                  enabled, area_index:int|null, area_name:str}
+        self._schedule = []
         self._auto_mode = None  # int 0/1/2, from dynamic_reconfigure
+        self._rain_mode = None  # int 0/1/2/3, from dynamic_reconfigure
         self._last_fired = {}  # entry_id+kind -> "YYYY-MM-DD HH:MM" to debounce within the minute
+
+        # Live area tracking from mower_logic/current_state, for area_index targeting.
+        self._current_area = -1
+        self._target_area = None  # int | None — area_index we are driving toward
+        self._last_skipped_from = None  # area we last issued a skip from (debounce)
         self._load()
 
         # ROS: publish actions the same way the web UI does
         self._action_pub = rospy.Publisher("xbot/action", String, queue_size=1)
+        rospy.Subscriber(
+            "mower_logic/current_state", HighLevelStatus, self._on_status, queue_size=10
+        )
 
         # dynamic_reconfigure client for automatic_mode (connect in background)
         self._dyn_client = None
@@ -106,18 +125,26 @@ class MowerScheduler:
     def _on_config(self, config):
         with self._lock:
             self._auto_mode = int(config.get("automatic_mode", self._auto_mode or 0))
+            self._rain_mode = int(config.get("rain_mode", self._rain_mode or 0))
         self._publish_state()
 
-    def _set_auto_mode(self, mode):
-        mode = max(0, min(2, int(mode)))
+    def _set_param(self, name, value):
+        if name not in PARAM_RANGES:
+            rospy.logwarn(f"mower_scheduler: refusing to set unknown param '{name}'")
+            return
+        lo, hi = PARAM_RANGES[name]
+        value = max(lo, min(hi, int(value)))
         if self._dyn_client is None:
-            rospy.logwarn("mower_scheduler: dynamic_reconfigure not ready, cannot set automatic_mode")
+            rospy.logwarn(f"mower_scheduler: dynamic_reconfigure not ready, cannot set {name}")
             return
         try:
-            self._dyn_client.update_configuration({"automatic_mode": mode})
-            rospy.loginfo(f"mower_scheduler: set automatic_mode={mode}")
+            self._dyn_client.update_configuration({name: value})
+            rospy.loginfo(f"mower_scheduler: set {name}={value}")
         except Exception as e:
-            rospy.logwarn(f"mower_scheduler: failed to set automatic_mode: {e}")
+            rospy.logwarn(f"mower_scheduler: failed to set {name}: {e}")
+
+    def _set_auto_mode(self, mode):
+        self._set_param("automatic_mode", mode)
 
     # ----- MQTT -----
     def _connect_mqtt(self):
@@ -148,6 +175,8 @@ class MowerScheduler:
                 self._save()
             elif cmd == "set_auto_mode":
                 self._set_auto_mode(data.get("mode", 0))
+            elif cmd == "set_param":
+                self._set_param(data.get("name", ""), data.get("value", 0))
             elif cmd == "trigger_now":
                 self._fire(ACTION_HOME if data.get("action") == "home" else ACTION_START)
         self._publish_state()
@@ -156,6 +185,8 @@ class MowerScheduler:
         state = {
             "enabled": self._enabled,
             "auto_mode": self._auto_mode,
+            "automatic_mode": self._auto_mode,
+            "rain_mode": self._rain_mode,
             "schedule": self._schedule,
             "ts": datetime.now().isoformat(timespec="seconds"),
         }
@@ -163,6 +194,55 @@ class MowerScheduler:
             self._mqtt.publish(STATE_TOPIC, json.dumps(state), retain=True)
         except Exception:
             pass
+
+    # ----- area targeting -----
+    def _on_status(self, msg):
+        """Track current mow-area and, when targeting a specific area_index,
+        issue skip_area until we reach it.
+
+        The robot starts mowing at area 0 and advances sequentially; skip_area
+        moves to the next area. We debounce so we issue at most one skip per
+        area advance (keyed on the area we are skipping *from*)."""
+        with self._lock:
+            self._current_area = int(msg.current_area)
+            target = self._target_area
+            if target is None:
+                return
+            cur = self._current_area
+            if cur < 0:
+                # Not in a mowing area yet (e.g. still transitioning); wait.
+                return
+            if cur >= target:
+                # Reached (or passed) the requested area: stop skipping.
+                if cur > target:
+                    rospy.logwarn(
+                        f"mower_scheduler: passed target area {target} (now {cur}); clearing target"
+                    )
+                else:
+                    rospy.loginfo(f"mower_scheduler: reached target area {target}")
+                self._target_area = None
+                self._last_skipped_from = None
+                return
+            # cur < target: need to skip forward. One skip per area advance.
+            if self._last_skipped_from != cur:
+                self._last_skipped_from = cur
+                rospy.loginfo(
+                    f"mower_scheduler: at area {cur}, skipping toward target {target}"
+                )
+                self._fire(ACTION_SKIP_AREA)
+
+    def _start_area_target(self, area_index):
+        """Begin driving to a specific mow-area index after start_mowing."""
+        if area_index is None:
+            self._target_area = None
+            return
+        try:
+            self._target_area = int(area_index)
+        except (TypeError, ValueError):
+            self._target_area = None
+            return
+        self._last_skipped_from = None
+        rospy.loginfo(f"mower_scheduler: targeting mow-area index {self._target_area}")
 
     # ----- scheduling -----
     def _fire(self, action):
@@ -187,10 +267,14 @@ class MowerScheduler:
                     if self._last_fired.get(key) != stamp:
                         self._last_fired[key] = stamp
                         self._fire(ACTION_START)
+                        # Optional: drive to a specific mow-area for this entry.
+                        # area_index null => normal full mow (no targeting).
+                        self._start_area_target(entry.get("area_index"))
                 if entry.get("end") and entry.get("end") == hhmm:
                     key = f"{entry.get('id')}:end"
                     if self._last_fired.get(key) != stamp:
                         self._last_fired[key] = stamp
+                        self._target_area = None  # stop any area targeting
                         self._fire(ACTION_HOME)
 
     def run(self):

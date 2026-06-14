@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>mower_scheduler</name>
+  <name>mower_stats</name>
   <version>0.1.0</version>
-  <description>Time-based mowing schedule and automatic-mode control over MQTT</description>
+  <description>Logs mowing sessions and publishes mowing statistics over MQTT</description>
 
   <maintainer email="killian.mccree+claude@gmail.com">glecocq</maintainer>
   <license>GPL-3.0</license>
@@ -10,8 +10,6 @@
   <buildtool_depend>catkin</buildtool_depend>
 
   <depend>rospy</depend>
-  <depend>std_msgs</depend>
   <depend>mower_msgs</depend>
-  <depend>dynamic_reconfigure</depend>
   <exec_depend>python3-paho-mqtt</exec_depend>
 </package>
