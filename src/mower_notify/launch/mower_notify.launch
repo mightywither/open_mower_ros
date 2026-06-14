@@ -2,6 +2,9 @@
     <node pkg="mower_notify" type="mower_notify.py" name="mower_notify" output="screen" respawn="true" respawn_delay="10">
         <!-- ntfy.sh topic URL. Override with OM_NTFY_URL env var or set directly here. -->
         <param name="ntfy_url" value="$(optenv OM_NTFY_URL https://ntfy.sh/mower-quiet-lynx)"/>
+        <!-- MQTT broker (the same mosquitto the web UI and bridge use). -->
+        <param name="broker_host" value="$(optenv OM_MQTT_HOST 127.0.0.1)"/>
+        <param name="broker_port" value="$(optenv OM_MQTT_PORT 1883)"/>
         <!-- Notification templates: title, message, tags, priority per event.
              Edit config/notifications.yaml to customize without touching Python code. -->
         <rosparam file="$(find mower_notify)/config/notifications.yaml" command="load"/>
