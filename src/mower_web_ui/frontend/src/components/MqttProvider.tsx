@@ -7,6 +7,7 @@ import { useSettingsStore } from '../store/settingsStore'
 import { useEventsStore } from '../store/eventsStore'
 import { useSensorsStore, type SensorInfo } from '../store/sensorsStore'
 import { useSchedulerStore } from '../store/schedulerStore'
+import { useMapEditStore } from '../store/mapEditStore'
 
 export function MqttProvider({ children }: { children: React.ReactNode }) {
   const brokerUrl = useSettingsStore((s) => s.brokerUrl)
@@ -16,6 +17,7 @@ export function MqttProvider({ children }: { children: React.ReactNode }) {
   const { addEvent, setEvents } = useEventsStore()
   const { setInfos, setValue } = useSensorsStore()
   const setSchedulerState = useSchedulerStore((s) => s.setFromState)
+  const setMapEditResult = useMapEditStore((s) => s.setResult)
   const clientRef = useRef<MqttClient | null>(null)
 
   useEffect(() => {
@@ -39,6 +41,7 @@ export function MqttProvider({ children }: { children: React.ReactNode }) {
         'sensors/+/data',
         'rpc/response',
         'scheduler/state',
+        'map/edit/result',
       ])
       // Load event history via RPC
       const reqId = Math.random().toString(36).slice(2)
@@ -70,6 +73,9 @@ export function MqttProvider({ children }: { children: React.ReactNode }) {
             break
           case 'scheduler/state':
             setSchedulerState(data)
+            break
+          case 'map/edit/result':
+            setMapEditResult(data as unknown as Parameters<typeof setMapEditResult>[0])
             break
           case 'robot_state/json':
             updateRobot(data)

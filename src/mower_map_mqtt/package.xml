@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>mower_map_mqtt</name>
+  <version>0.1.0</version>
+  <description>Apply web-UI map edits to the robot map over MQTT</description>
+
+  <maintainer email="killian.mccree+claude@gmail.com">glecocq</maintainer>
+  <license>GPL-3.0</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <depend>rospy</depend>
+  <depend>geometry_msgs</depend>
+  <depend>mower_map</depend>
+  <exec_depend>python3-paho-mqtt</exec_depend>
+</package>

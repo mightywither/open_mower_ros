@@ -38,5 +38,7 @@
 
     <include file="$(find mower_scheduler)/launch/mower_scheduler.launch"/>
 
+    <include file="$(find mower_map_mqtt)/launch/mower_map_mqtt.launch"/>
+
     <include file="$(find open_mower)/launch/include/_params.launch"/>
 </launch>

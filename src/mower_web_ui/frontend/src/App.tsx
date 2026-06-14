@@ -5,6 +5,7 @@ import { Layout } from './components/Layout'
 import { Dashboard } from './pages/Dashboard'
 import { MapView } from './pages/MapView'
 import { MapEditor } from './pages/MapEditor'
+import { MapEdit } from './pages/MapEdit'
 import { Control } from './pages/Control'
 import { Teleop } from './pages/Teleop'
 import { Sensors } from './pages/Sensors'
@@ -23,6 +24,7 @@ export function App() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/map" element={<MapView />} />
             <Route path="/map-editor" element={<MapEditor />} />
+            <Route path="/map-edit" element={<MapEdit />} />
             <Route path="/control" element={<Control />} />
             <Route path="/teleop" element={<Teleop />} />
             <Route path="/sensors" element={<Sensors />} />

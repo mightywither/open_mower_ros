@@ -1,0 +1,6 @@
+<launch>
+    <node pkg="mower_map_mqtt" type="mower_map_mqtt.py" name="mower_map_mqtt" output="screen" respawn="true" respawn_delay="10">
+        <param name="broker_host" value="$(optenv OM_MQTT_HOST 127.0.0.1)"/>
+        <param name="broker_port" value="$(optenv OM_MQTT_PORT 1883)"/>
+    </node>
+</launch>
