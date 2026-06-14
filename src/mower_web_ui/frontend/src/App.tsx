@@ -8,6 +8,7 @@ import { MapEditor } from './pages/MapEditor'
 import { Control } from './pages/Control'
 import { Teleop } from './pages/Teleop'
 import { Sensors } from './pages/Sensors'
+import { Planning } from './pages/Planning'
 import { Events } from './pages/Events'
 import { Settings } from './pages/Settings'
 
@@ -25,6 +26,7 @@ export function App() {
             <Route path="/control" element={<Control />} />
             <Route path="/teleop" element={<Teleop />} />
             <Route path="/sensors" element={<Sensors />} />
+            <Route path="/planning" element={<Planning />} />
             <Route path="/events" element={<Events />} />
             <Route path="/settings" element={<Settings />} />
           </Routes>

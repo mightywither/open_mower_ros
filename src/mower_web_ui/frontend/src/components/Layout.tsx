@@ -6,6 +6,7 @@ import {
   SlidersHorizontal,
   Gamepad2,
   Activity,
+  CalendarClock,
   Bell,
   Settings,
   Wifi,
@@ -23,6 +24,7 @@ const navItems = [
   { to: '/control', icon: SlidersHorizontal, label: 'Contrôle' },
   { to: '/teleop', icon: Gamepad2, label: 'Téléop' },
   { to: '/sensors', icon: Activity, label: 'Capteurs' },
+  { to: '/planning', icon: CalendarClock, label: 'Planning' },
   { to: '/events', icon: Bell, label: 'Événements' },
   { to: '/settings', icon: Settings, label: 'Paramètres' },
 ]

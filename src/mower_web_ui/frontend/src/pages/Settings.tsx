@@ -1,10 +1,17 @@
 import { useState } from 'react'
-import { Save, RefreshCw, Wifi } from 'lucide-react'
+import { Save, RefreshCw, Wifi, Bot } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
 import { useSettingsStore } from '../store/settingsStore'
 import { useMqttStore } from '../store/mqttStore'
 import { useMapStore } from '../store/mapStore'
+import { useSchedulerStore } from '../store/schedulerStore'
+
+const AUTO_MODES = [
+  { value: 0, label: 'Manuel', desc: 'Ne démarre jamais seul' },
+  { value: 1, label: 'Semi-auto', desc: 'Une tâche à la fois' },
+  { value: 2, label: 'Automatique', desc: 'Reprend après charge' },
+]
 
 function LabeledInput({
   label,
@@ -37,10 +44,17 @@ function LabeledInput({
 export function Settings() {
   const { brokerUrl, setBrokerUrl } = useSettingsStore()
   const connected = useMqttStore((s) => s.connected)
+  const publish = useMqttStore((s) => s.publish)
   const clearTrail = useMapStore((s) => s.clearTrail)
+  const autoMode = useSchedulerStore((s) => s.autoMode)
+  const schedulerLoaded = useSchedulerStore((s) => s.loaded)
 
   const [localBrokerUrl, setLocalBrokerUrl] = useState(brokerUrl)
   const [saved, setSaved] = useState(false)
+
+  function setAutoMode(mode: number) {
+    publish('scheduler/cmd', JSON.stringify({ cmd: 'set_auto_mode', mode }))
+  }
 
   function handleSave() {
     setBrokerUrl(localBrokerUrl)
@@ -81,6 +95,43 @@ export function Settings() {
             <Save size={15} />
             {saved ? 'Enregistré !' : 'Enregistrer'}
           </Button>
+        </CardContent>
+      </Card>
+
+      {/* Automatic mode */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-1.5">
+            <Bot size={13} /> Mode automatique
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {!schedulerLoaded ? (
+            <p className="text-xs text-slate-500">
+              En attente du service <code className="font-mono">mower_scheduler</code>…
+            </p>
+          ) : (
+            <div className="grid grid-cols-3 gap-2">
+              {AUTO_MODES.map((m) => (
+                <button
+                  key={m.value}
+                  onClick={() => setAutoMode(m.value)}
+                  className={`flex flex-col items-center gap-0.5 rounded-lg border px-2 py-3 text-center transition-colors ${
+                    autoMode === m.value
+                      ? 'border-emerald-600 bg-emerald-500/10'
+                      : 'border-surface-2 hover:bg-surface-2'
+                  }`}
+                >
+                  <span className="text-sm font-medium text-white">{m.label}</span>
+                  <span className="text-[10px] leading-tight text-slate-500">{m.desc}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          <p className="text-xs text-slate-500">
+            En mode <strong>Automatique</strong>, le robot reprend la tonte automatiquement après
+            avoir chargé et suit la planification.
+          </p>
         </CardContent>
       </Card>
 
