@@ -1,10 +1,14 @@
-import { Battery, Satellite, MapPin, Droplets, Zap, Activity, Clock } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Battery, Satellite, MapPin, Droplets, Zap, Activity, Clock, Maximize2 } from 'lucide-react'
 import { useRobotStore } from '../store/robotStore'
 import { useEventsStore } from '../store/eventsStore'
 import { useMqttStore } from '../store/mqttStore'
 import { Card, CardTitle, CardContent, CardHeader } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { Progress } from '../components/ui/progress'
+import { RobotMap } from '../components/RobotMap'
+import { QuickActions } from '../components/QuickActions'
+import { SensorsPanel } from '../components/SensorsPanel'
 import { cn, formatDate } from '../shared/utils'
 
 const STATE_STYLES: Record<string, { label: string; badge: string; dot: string }> = {
@@ -80,6 +84,29 @@ export function Dashboard() {
         )}
       </div>
 
+      {/* Quick controls */}
+      <QuickActions />
+
+      {/* Live map */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-1.5">
+            <MapPin size={13} /> Carte
+          </CardTitle>
+          <Link
+            to="/map"
+            className="flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300"
+          >
+            <Maximize2 size={12} /> Plein écran
+          </Link>
+        </CardHeader>
+        <CardContent>
+          <div className="h-56 overflow-hidden rounded-lg sm:h-72">
+            <RobotMap className="h-full w-full" interactive={false} />
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Stats grid */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {/* Battery */}
@@ -146,6 +173,9 @@ export function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Sensors: charge, voltages, temperatures */}
+      <SensorsPanel />
 
       {/* Recent events */}
       <Card>

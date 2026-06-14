@@ -5,6 +5,7 @@ import { useRobotStore } from '../store/robotStore'
 import { useMapStore } from '../store/mapStore'
 import { useSettingsStore } from '../store/settingsStore'
 import { useEventsStore } from '../store/eventsStore'
+import { useSensorsStore, type SensorInfo } from '../store/sensorsStore'
 
 export function MqttProvider({ children }: { children: React.ReactNode }) {
   const brokerUrl = useSettingsStore((s) => s.brokerUrl)
@@ -12,6 +13,7 @@ export function MqttProvider({ children }: { children: React.ReactNode }) {
   const updateRobot = useRobotStore((s) => s.update)
   const { updatePosition, setMap } = useMapStore()
   const { addEvent, setEvents } = useEventsStore()
+  const { setInfos, setValue } = useSensorsStore()
   const clientRef = useRef<MqttClient | null>(null)
 
   useEffect(() => {
@@ -31,6 +33,9 @@ export function MqttProvider({ children }: { children: React.ReactNode }) {
         'map/json',
         'events/json',
         'actions/json',
+        'sensor_infos/json',
+        'sensors/+/data',
+        'rpc/response',
       ])
       // Load event history via RPC
       const reqId = Math.random().toString(36).slice(2)
@@ -46,8 +51,20 @@ export function MqttProvider({ children }: { children: React.ReactNode }) {
     client.on('message', (topic, message) => {
       try {
         const raw = message.toString()
+
+        // Sensor data values are published as raw strings (number or text),
+        // not JSON — handle them before attempting to parse.
+        if (topic.startsWith('sensors/') && topic.endsWith('/data')) {
+          const id = topic.slice('sensors/'.length, -'/data'.length)
+          setValue(id, raw)
+          return
+        }
+
         const data = JSON.parse(raw) as Record<string, unknown>
         switch (topic) {
+          case 'sensor_infos/json':
+            setInfos(data as unknown as SensorInfo[])
+            break
           case 'robot_state/json':
             updateRobot(data)
             break

@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   Map,
   Layers,
+  SlidersHorizontal,
   Gamepad2,
   Bell,
   Settings,
@@ -18,7 +19,8 @@ const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Accueil' },
   { to: '/map', icon: Map, label: 'Carte' },
   { to: '/map-editor', icon: Layers, label: 'Zones' },
-  { to: '/control', icon: Gamepad2, label: 'Contrôle' },
+  { to: '/control', icon: SlidersHorizontal, label: 'Contrôle' },
+  { to: '/teleop', icon: Gamepad2, label: 'Téléop' },
   { to: '/events', icon: Bell, label: 'Événements' },
   { to: '/settings', icon: Settings, label: 'Paramètres' },
 ]

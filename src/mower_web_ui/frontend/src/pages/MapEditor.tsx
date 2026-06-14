@@ -1,21 +1,17 @@
-import { useMemo } from 'react'
-import L from 'leaflet'
-import { MapContainer, Polygon, useMap } from 'react-leaflet'
-import { useEffect, useRef } from 'react'
-import { Layers, MapPin, Navigation, AlertTriangle, Anchor } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Layers, MapPin, Navigation, AlertTriangle, Anchor, Play, X, Scissors } from 'lucide-react'
 import { useMapStore, type MapArea, type MapPoint } from '../store/mapStore'
+import { useMowControlStore } from '../store/mowControlStore'
+import { useRobotStore } from '../store/robotStore'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
+import { Button } from '../components/ui/button'
+import { RobotMap } from '../components/RobotMap'
 
-function toLatLng(p: MapPoint): L.LatLngTuple {
-  return [-p.y, p.x]
-}
-
-function toLatLngs(pts: MapPoint[]): L.LatLngTuple[] {
-  return pts.map(toLatLng)
-}
-
-const TYPE_META: Record<string, { label: string; color: string; icon: React.ReactNode; badge: 'default' | 'secondary' | 'destructive' | 'warning' }> = {
+const TYPE_META: Record<
+  string,
+  { label: string; color: string; icon: React.ReactNode; badge: 'default' | 'secondary' | 'destructive' | 'warning' }
+> = {
   mow: { label: 'Tonte', color: '#10b981', icon: <Layers size={14} />, badge: 'default' },
   nav: { label: 'Navigation', color: '#3b82f6', icon: <Navigation size={14} />, badge: 'secondary' },
   obstacle: { label: 'Obstacle', color: '#ef4444', icon: <AlertTriangle size={14} />, badge: 'destructive' },
@@ -39,22 +35,16 @@ function areaApproxM2(outline: MapPoint[]): number {
   return Math.abs(area / 2)
 }
 
-function MapFitter({ areas }: { areas: MapArea[] }) {
-  const map = useMap()
-  const fitted = useRef(false)
-  useEffect(() => {
-    if (fitted.current || !areas.length) return
-    const pts = areas.flatMap((a) => a.outline).map(toLatLng)
-    if (pts.length) {
-      map.fitBounds(L.latLngBounds(pts), { padding: [20, 20] })
-      fitted.current = true
-    }
-  }, [areas, map])
-  return null
-}
-
 export function MapEditor() {
   const { areas, dockingStations } = useMapStore()
+  const requestArea = useMowControlStore((s) => s.requestArea)
+  const targetAreaIndex = useMowControlStore((s) => s.targetAreaIndex)
+  const targetAreaName = useMowControlStore((s) => s.targetAreaName)
+  const currentArea = useRobotStore((s) => s.area)
+  const [selected, setSelected] = useState<{ id: string; index: number; name: string } | null>(null)
+
+  // Mow areas in map order — index matches the firmware's mowing-area index.
+  const mowAreas = useMemo(() => areas.filter((a) => a.properties.type === 'mow'), [areas])
 
   const grouped = useMemo(() => {
     const g: Record<string, MapArea[]> = { mow: [], nav: [], obstacle: [] }
@@ -70,10 +60,59 @@ export function MapEditor() {
     [grouped.mow],
   )
 
+  function selectArea(area: MapArea) {
+    if (area.properties.type !== 'mow') return
+    const index = mowAreas.findIndex((a) => a.id === area.id)
+    if (index < 0) return
+    setSelected({ id: area.id, index, name: area.properties.name || `Zone ${index + 1}` })
+  }
+
+  function confirmMow() {
+    if (!selected) return
+    requestArea(selected.index, selected.name)
+    setSelected(null)
+  }
+
   return (
     <div className="flex h-full flex-col gap-0 md:flex-row">
-      {/* Left panel: area list */}
-      <div className="flex w-full flex-col gap-3 overflow-y-auto p-4 md:w-72 md:border-r md:border-surface-2">
+      {/* Left panel */}
+      <div className="flex w-full flex-col gap-3 overflow-y-auto p-4 md:w-80 md:border-r md:border-surface-2">
+        {/* Active mow target */}
+        {targetAreaIndex !== null && (
+          <div className="flex items-center gap-3 rounded-xl border border-amber-800 bg-amber-950/40 p-3">
+            <Scissors size={18} className="shrink-0 text-amber-400" />
+            <div className="flex-1 text-sm text-amber-200">
+              En route vers <strong>{targetAreaName}</strong>
+              <div className="text-xs text-amber-400/70">
+                Zone actuelle #{currentArea} → cible #{targetAreaIndex}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Selection confirmation */}
+        {selected && (
+          <Card className="border-emerald-800">
+            <CardContent className="flex flex-col gap-3 pt-4">
+              <div className="text-sm text-white">
+                Tondre <strong>{selected.name}</strong> ?
+              </div>
+              <p className="text-xs text-slate-400">
+                Le robot démarre la tonte et passe automatiquement les zones précédentes
+                jusqu'à celle-ci.
+              </p>
+              <div className="flex gap-2">
+                <Button variant="default" size="sm" className="flex-1" onClick={confirmMow}>
+                  <Play size={14} /> Tondre
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setSelected(null)}>
+                  <X size={14} /> Annuler
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Summary */}
         <Card>
           <CardHeader>
@@ -96,7 +135,7 @@ export function MapEditor() {
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400">Surface totale</span>
-              <span className="font-medium text-white">~{(totalMowM2).toFixed(0)} m²</span>
+              <span className="font-medium text-white">~{totalMowM2.toFixed(0)} m²</span>
             </div>
           </CardContent>
         </Card>
@@ -122,7 +161,7 @@ export function MapEditor() {
           </Card>
         )}
 
-        {/* Area list */}
+        {/* Area lists */}
         {(['mow', 'nav', 'obstacle'] as const).map((type) => {
           const meta = TYPE_META[type]
           const list = grouped[type]
@@ -139,20 +178,27 @@ export function MapEditor() {
                 {list.map((area) => {
                   const center = areaCenter(area.outline)
                   const m2 = areaApproxM2(area.outline)
+                  const clickable = type === 'mow'
                   return (
-                    <div
+                    <button
                       key={area.id}
-                      className="rounded-lg border border-surface-2 px-3 py-2 hover:bg-surface-2 transition-colors"
+                      onClick={() => clickable && selectArea(area)}
+                      disabled={!clickable}
+                      className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                        selected?.id === area.id
+                          ? 'border-emerald-600 bg-emerald-500/10'
+                          : 'border-surface-2'
+                      } ${clickable ? 'cursor-pointer hover:bg-surface-2' : 'cursor-default'}`}
                     >
                       <div className="flex items-center gap-2">
-                        <div
-                          className="h-2 w-2 shrink-0 rounded-full"
-                          style={{ backgroundColor: meta.color }}
-                        />
+                        <div className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: meta.color }} />
                         <span className="flex-1 truncate text-sm text-white">
                           {area.properties.name || `Zone ${area.id.slice(0, 6)}`}
                         </span>
-                        <Badge variant={meta.badge} className="text-xs">{type}</Badge>
+                        {clickable && <Play size={13} className="shrink-0 text-emerald-400" />}
+                        <Badge variant={meta.badge} className="text-xs">
+                          {type}
+                        </Badge>
                       </div>
                       <div className="mt-1 flex gap-3 text-xs text-slate-500">
                         <span>{area.outline.length} pts</span>
@@ -161,7 +207,7 @@ export function MapEditor() {
                           ({center.x.toFixed(1)}, {center.y.toFixed(1)})
                         </span>
                       </div>
-                    </div>
+                    </button>
                   )
                 })}
               </CardContent>
@@ -176,38 +222,17 @@ export function MapEditor() {
         )}
 
         <p className="rounded-lg border border-slate-800 p-3 text-xs text-slate-500">
-          Pour modifier la carte (ajouter des zones, déplacer des obstacles), éditez le fichier{' '}
-          <code className="font-mono">map.json</code> sur le robot ou utilisez l'enregistrement de
-          zone dans l'interface de contrôle.
+          Touchez une zone de tonte (liste ou carte) pour y envoyer le robot.
         </p>
       </div>
 
-      {/* Right: map preview */}
-      <div className="hidden flex-1 md:flex">
-        <MapContainer
-          crs={L.CRS.Simple}
-          center={[0, 0]}
-          zoom={2}
-          className="flex-1"
-          attributionControl={false}
-        >
-          <MapFitter areas={areas} />
-          {areas.map((area) => {
-            const meta = TYPE_META[area.properties.type] ?? TYPE_META.nav
-            return (
-              <Polygon
-                key={area.id}
-                positions={toLatLngs(area.outline)}
-                pathOptions={{
-                  color: meta.color,
-                  fillColor: meta.color,
-                  fillOpacity: 0.15,
-                  weight: 2,
-                }}
-              />
-            )
-          })}
-        </MapContainer>
+      {/* Right: interactive map */}
+      <div className="relative h-72 shrink-0 md:h-auto md:flex-1">
+        <RobotMap
+          className="h-full w-full"
+          onAreaClick={selectArea}
+          highlightedAreaId={selected?.id ?? null}
+        />
       </div>
     </div>
   )

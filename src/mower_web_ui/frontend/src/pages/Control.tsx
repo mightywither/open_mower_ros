@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { Link } from 'react-router-dom'
 import {
   Play,
   Home,
@@ -44,72 +44,9 @@ function ActionButton({ label, icon, action, variant = 'secondary', size = 'defa
   )
 }
 
-// Touch joystick for manual control
-function Joystick() {
-  const publish = useMqttStore((s) => s.publish)
-  const padRef = useRef<HTMLDivElement>(null)
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const velRef = useRef({ vx: 0, vz: 0 })
-
-  const sendVel = useCallback(() => {
-    const { vx, vz } = velRef.current
-    publish('teleop', JSON.stringify({ vx, vz }))
-  }, [publish])
-
-  function startInterval() {
-    if (intervalRef.current) return
-    intervalRef.current = setInterval(sendVel, 100)
-  }
-
-  function stopInterval() {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current)
-      intervalRef.current = null
-    }
-    velRef.current = { vx: 0, vz: 0 }
-    publish('teleop', JSON.stringify({ vx: 0, vz: 0 }))
-  }
-
-  function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
-    if (!padRef.current || !(e.buttons & 1)) return
-    const rect = padRef.current.getBoundingClientRect()
-    const cx = rect.left + rect.width / 2
-    const cy = rect.top + rect.height / 2
-    const dx = (e.clientX - cx) / (rect.width / 2)
-    const dy = (e.clientY - cy) / (rect.height / 2)
-    const clamped = (v: number) => Math.max(-1, Math.min(1, v))
-    velRef.current = { vx: clamped(-dy) * 0.5, vz: clamped(-dx) * 1.0 }
-    startInterval()
-  }
-
-  return (
-    <div className="flex flex-col items-center gap-2">
-      <div className="text-xs text-slate-400">Contrôle manuel (glisser)</div>
-      <div
-        ref={padRef}
-        onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); startInterval() }}
-        onPointerMove={onPointerMove}
-        onPointerUp={stopInterval}
-        onPointerCancel={stopInterval}
-        className="relative h-40 w-40 cursor-pointer touch-none rounded-full border-2 border-slate-700 bg-surface-2 select-none"
-        style={{ userSelect: 'none' }}
-      >
-        <div className="absolute inset-0 flex items-center justify-center">
-          <Gamepad2 size={28} className="text-slate-600" />
-        </div>
-        {/* Crosshair */}
-        <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-slate-700/50" />
-        <div className="absolute top-1/2 left-0 w-full h-px -translate-y-1/2 bg-slate-700/50" />
-      </div>
-      <div className="text-xs text-slate-500">Avant / Arrière · Gauche / Droite</div>
-    </div>
-  )
-}
-
 export function Control() {
   const { state, emergency } = useRobotStore()
   const sendAction = useAction()
-  const [showJoystick, setShowJoystick] = useState(false)
 
   const isIdle = state === 'IDLE' || state === 'NULL' || state === 'INCONNU'
   const isMowing = state === 'AUTONOMOUS' || state === 'MOWING'
@@ -205,23 +142,19 @@ export function Control() {
         </CardContent>
       </Card>
 
-      {/* Joystick */}
+      {/* Teleop link */}
       <Card>
         <CardHeader>
           <CardTitle>Téléopération manuelle</CardTitle>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowJoystick((v) => !v)}
-          >
-            {showJoystick ? 'Masquer' : 'Afficher'}
-          </Button>
         </CardHeader>
-        {showJoystick && (
-          <CardContent className="flex justify-center py-4">
-            <Joystick />
-          </CardContent>
-        )}
+        <CardContent>
+          <Button asChild variant="secondary" className="w-full">
+            <Link to="/teleop">
+              <Gamepad2 size={16} />
+              Ouvrir la téléopération (avec carte)
+            </Link>
+          </Button>
+        </CardContent>
       </Card>
     </div>
   )
