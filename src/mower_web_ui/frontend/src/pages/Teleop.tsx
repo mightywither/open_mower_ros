@@ -3,6 +3,7 @@ import { Gamepad2, AlertTriangle } from 'lucide-react'
 import { RobotMap } from '../components/RobotMap'
 import { useMqttStore } from '../store/mqttStore'
 import { useRobotStore } from '../store/robotStore'
+import { encodeBsonDoubles } from '../shared/bson'
 
 // Touch joystick for manual control — publishes teleop {vx, vz} at 10 Hz.
 function Joystick() {
@@ -14,7 +15,7 @@ function Joystick() {
 
   const sendVel = useCallback(() => {
     const { vx, vz } = velRef.current
-    publish('teleop', JSON.stringify({ vx, vz }))
+    publish('teleop', encodeBsonDoubles({ vx, vz }))
   }, [publish])
 
   function startInterval() {
@@ -29,7 +30,7 @@ function Joystick() {
     }
     velRef.current = { vx: 0, vz: 0 }
     if (knobRef.current) knobRef.current.style.transform = 'translate(-50%, -50%)'
-    publish('teleop', JSON.stringify({ vx: 0, vz: 0 }))
+    publish('teleop', encodeBsonDoubles({ vx: 0, vz: 0 }))
   }
 
   function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {

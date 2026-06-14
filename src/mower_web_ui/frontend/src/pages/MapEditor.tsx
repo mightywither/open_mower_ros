@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
-import { Layers, MapPin, Navigation, AlertTriangle, Anchor, Play, X, Scissors } from 'lucide-react'
+import { Layers, MapPin, Navigation, AlertTriangle, Anchor, Play, X, Scissors, Home } from 'lucide-react'
 import { useMapStore, type MapArea, type MapPoint } from '../store/mapStore'
 import { useMowControlStore } from '../store/mowControlStore'
+import { useMqttStore } from '../store/mqttStore'
 import { useRobotStore } from '../store/robotStore'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
@@ -41,7 +42,17 @@ export function MapEditor() {
   const targetAreaIndex = useMowControlStore((s) => s.targetAreaIndex)
   const targetAreaName = useMowControlStore((s) => s.targetAreaName)
   const currentArea = useRobotStore((s) => s.area)
+  const robotState = useRobotStore((s) => s.state)
+  const publish = useMqttStore((s) => s.publish)
   const [selected, setSelected] = useState<{ id: string; index: number; name: string } | null>(null)
+
+  // "Go home": abort_mowing returns the robot to the docking station.
+  // Only meaningful while mowing/paused (no firmware dock-from-idle action).
+  const canGoHome = robotState === 'AUTONOMOUS' || robotState === 'MOWING' || robotState === 'PAUSED'
+  function goHome() {
+    if (!canGoHome) return
+    publish('action', 'mower_logic:mowing/abort_mowing')
+  }
 
   // Mow areas in map order — index matches the firmware's mowing-area index.
   const mowAreas = useMemo(() => areas.filter((a) => a.properties.type === 'mow'), [areas])
@@ -150,13 +161,26 @@ export function MapEditor() {
             </CardHeader>
             <CardContent className="flex flex-col gap-2">
               {dockingStations.map((ds) => (
-                <div key={ds.id} className="flex items-center justify-between rounded-lg bg-surface-2 px-3 py-2">
-                  <span className="text-sm text-white">{ds.properties.name || 'Base'}</span>
-                  <span className="text-xs text-slate-500">
-                    {ds.position.x.toFixed(1)}, {ds.position.y.toFixed(1)}
+                <button
+                  key={ds.id}
+                  onClick={goHome}
+                  disabled={!canGoHome}
+                  className={`flex items-center justify-between rounded-lg bg-surface-2 px-3 py-2 text-left transition-colors ${
+                    canGoHome ? 'cursor-pointer hover:bg-slate-700' : 'cursor-default opacity-60'
+                  }`}
+                >
+                  <span className="flex items-center gap-2 text-sm text-white">
+                    <Home size={14} className="text-amber-400" />
+                    {ds.properties.name || 'Base'}
                   </span>
-                </div>
+                  <span className="text-xs text-slate-500">
+                    {canGoHome ? 'Rentrer →' : `${ds.position.x.toFixed(1)}, ${ds.position.y.toFixed(1)}`}
+                  </span>
+                </button>
               ))}
+              <p className="text-[11px] text-slate-500">
+                Touchez la base (ici ou sur la carte) pour renvoyer le robot au chargeur.
+              </p>
             </CardContent>
           </Card>
         )}
@@ -231,6 +255,7 @@ export function MapEditor() {
         <RobotMap
           className="h-full w-full"
           onAreaClick={selectArea}
+          onDockClick={goHome}
           highlightedAreaId={selected?.id ?? null}
         />
       </div>

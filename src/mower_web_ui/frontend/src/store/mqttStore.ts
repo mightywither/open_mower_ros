@@ -6,7 +6,7 @@ interface MqttStore {
   client: MqttClient | null
   setConnected: (v: boolean) => void
   setClient: (c: MqttClient | null) => void
-  publish: (topic: string, payload: string) => void
+  publish: (topic: string, payload: string | Uint8Array) => void
 }
 
 export const useMqttStore = create<MqttStore>((set, get) => ({
@@ -15,6 +15,6 @@ export const useMqttStore = create<MqttStore>((set, get) => ({
   setConnected: (connected) => set({ connected }),
   setClient: (client) => set({ client }),
   publish: (topic, payload) => {
-    get().client?.publish(topic, payload)
+    get().client?.publish(topic, payload as string | Buffer)
   },
 }))

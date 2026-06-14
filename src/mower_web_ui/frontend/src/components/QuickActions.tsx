@@ -1,4 +1,4 @@
-import { Play, Home, Pause, StopCircle } from 'lucide-react'
+import { Play, Home, Pause } from 'lucide-react'
 import { Button } from './ui/button'
 import { useMqttStore } from '../store/mqttStore'
 import { useRobotStore } from '../store/robotStore'
@@ -13,7 +13,7 @@ export function QuickActions() {
   const isPaused = state === 'PAUSED'
 
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+    <div className="grid grid-cols-3 gap-2">
       <Button
         variant="default"
         size="lg"
@@ -25,16 +25,6 @@ export function QuickActions() {
         <span className="text-xs">Démarrer</span>
       </Button>
       <Button
-        variant="secondary"
-        size="lg"
-        className="h-auto flex-col gap-1 py-3"
-        disabled={isIdle || emergency}
-        onClick={() => send('mower_logic:idle/go_home')}
-      >
-        <Home size={22} />
-        <span className="text-xs">Rentrer</span>
-      </Button>
-      <Button
         variant="warning"
         size="lg"
         className="h-auto flex-col gap-1 py-3"
@@ -44,15 +34,16 @@ export function QuickActions() {
         {isPaused ? <Play size={22} /> : <Pause size={22} />}
         <span className="text-xs">{isPaused ? 'Reprendre' : 'Pause'}</span>
       </Button>
+      {/* abort_mowing returns the robot to the docking station ("go home"). */}
       <Button
-        variant="destructive"
+        variant="secondary"
         size="lg"
         className="h-auto flex-col gap-1 py-3"
         disabled={!isMowing && !isPaused}
         onClick={() => send('mower_logic:mowing/abort_mowing')}
       >
-        <StopCircle size={22} />
-        <span className="text-xs">Arrêter</span>
+        <Home size={22} />
+        <span className="text-xs">Rentrer</span>
       </Button>
     </div>
   )

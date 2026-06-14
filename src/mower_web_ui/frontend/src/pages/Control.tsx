@@ -3,7 +3,6 @@ import {
   Play,
   Home,
   Pause,
-  StopCircle,
   RotateCcw,
   SkipForward,
   Gamepad2,
@@ -86,14 +85,6 @@ export function Control() {
               disabled={!isIdle || emergency}
             />
             <ActionButton
-              label="Rentrer"
-              icon={<Home size={24} />}
-              action="mower_logic:idle/go_home"
-              variant="secondary"
-              size="lg"
-              disabled={isIdle || emergency}
-            />
-            <ActionButton
               label={isPaused ? 'Reprendre' : 'Pause'}
               icon={isPaused ? <Play size={24} /> : <Pause size={24} />}
               action={isPaused ? 'mower_logic:mowing/continue' : 'mower_logic:mowing/pause'}
@@ -101,11 +92,12 @@ export function Control() {
               size="lg"
               disabled={!isMowing && !isPaused}
             />
+            {/* abort_mowing returns the robot to the docking station ("go home"). */}
             <ActionButton
-              label="Arrêter"
-              icon={<StopCircle size={24} />}
+              label="Rentrer"
+              icon={<Home size={24} />}
               action="mower_logic:mowing/abort_mowing"
-              variant="destructive"
+              variant="secondary"
               size="lg"
               disabled={!isMowing && !isPaused}
             />

@@ -89,6 +89,8 @@ export interface RobotMapProps {
   showTrail?: boolean
   /** Called when a mowing area is clicked. Enables hover/click affordance. */
   onAreaClick?: (area: MapArea) => void
+  /** Called when a docking station is clicked. */
+  onDockClick?: () => void
   /** Highlight a specific area id (e.g. selected to mow). */
   highlightedAreaId?: string | null
   className?: string
@@ -98,6 +100,7 @@ export function RobotMap({
   interactive = true,
   showTrail = true,
   onAreaClick,
+  onDockClick,
   highlightedAreaId,
   className,
 }: RobotMapProps) {
@@ -162,6 +165,7 @@ export function RobotMap({
           key={ds.id}
           position={toLatLng(ds.position)}
           icon={dockIcon(ds.heading ?? 0)}
+          eventHandlers={onDockClick ? { click: () => onDockClick() } : undefined}
         />
       ))}
 

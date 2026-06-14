@@ -180,7 +180,10 @@ void IdleBehavior::command_s2() {
 }
 
 bool IdleBehavior::redirect_joystick() {
-  return false;
+  // Allow manual teleop (web UI joystick / gamepad) while idle. The robot is
+  // stopped and the operator drives deliberately; mower_logic still applies the
+  // joy_vel watchdog (stops if commands stop arriving).
+  return true;
 }
 
 uint8_t IdleBehavior::get_sub_state() {
