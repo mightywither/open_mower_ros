@@ -2,7 +2,9 @@
 # Builds the frontend and serves the static files with nginx on port 8081.
 # Deployed alongside (not replacing) the legacy OpenMowerApp, which stays on 8080.
 
-FROM node:20-alpine AS build
+# Build on the runner's native arch (static output is arch-independent) to
+# avoid slow QEMU-emulated npm builds when targeting arm64.
+FROM --platform=$BUILDPLATFORM node:20-alpine AS build
 WORKDIR /app
 COPY src/mower_web_ui/frontend/package*.json ./
 RUN npm ci --no-audit --no-fund
