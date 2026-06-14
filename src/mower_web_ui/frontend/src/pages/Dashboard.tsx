@@ -8,7 +8,6 @@ import { Badge } from '../components/ui/badge'
 import { Progress } from '../components/ui/progress'
 import { RobotMap } from '../components/RobotMap'
 import { QuickActions } from '../components/QuickActions'
-import { SensorsPanel } from '../components/SensorsPanel'
 import { cn, formatDate } from '../shared/utils'
 
 const STATE_STYLES: Record<string, { label: string; badge: string; dot: string }> = {
@@ -173,9 +172,6 @@ export function Dashboard() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Sensors: charge, voltages, temperatures */}
-      <SensorsPanel />
 
       {/* Recent events */}
       <Card>

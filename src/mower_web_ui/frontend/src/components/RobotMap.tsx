@@ -4,9 +4,17 @@ import { MapContainer, Polygon, Polyline, Marker, useMap } from 'react-leaflet'
 import { useEffect, useRef } from 'react'
 import { useMapStore, type MapArea, type MapPoint } from '../store/mapStore'
 
-// Local metric frame (ENU) -> Leaflet CRS.Simple. Flip Y so north is up.
+// Local metric frame (ENU: x=East, y=North) -> Leaflet CRS.Simple.
+// CRS.Simple has lat increasing upward and lng increasing rightward, so
+// North (y) maps to lat and East (x) maps to lng — north is up, east is right.
 export function toLatLng(p: { x: number; y: number }): L.LatLngTuple {
-  return [-p.y, p.x]
+  return [p.y, p.x]
+}
+
+// ENU heading (radians, 0 = East, CCW positive) -> CSS clockwise rotation for
+// an icon that points up (North) by default, on a north-up map.
+function headingToCssDeg(heading: number): number {
+  return 90 - (heading * 180) / Math.PI
 }
 
 function toLatLngs(pts: MapPoint[]): L.LatLngTuple[] {
@@ -20,7 +28,7 @@ const AREA_STYLES: Record<string, { color: string; fillOpacity: number }> = {
 }
 
 function robotIcon(heading: number) {
-  const deg = (heading * 180) / Math.PI
+  const deg = headingToCssDeg(heading)
   return L.divIcon({
     className: '',
     html: `
@@ -37,7 +45,7 @@ function robotIcon(heading: number) {
 
 function dockIcon(heading: number) {
   // The little notch points toward the docking heading so the orientation is visible.
-  const deg = (heading * 180) / Math.PI
+  const deg = headingToCssDeg(heading)
   return L.divIcon({
     className: '',
     html: `

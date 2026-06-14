@@ -5,6 +5,7 @@ import {
   Layers,
   SlidersHorizontal,
   Gamepad2,
+  Activity,
   Bell,
   Settings,
   Wifi,
@@ -21,6 +22,7 @@ const navItems = [
   { to: '/map-editor', icon: Layers, label: 'Zones' },
   { to: '/control', icon: SlidersHorizontal, label: 'Contrôle' },
   { to: '/teleop', icon: Gamepad2, label: 'Téléop' },
+  { to: '/sensors', icon: Activity, label: 'Capteurs' },
   { to: '/events', icon: Bell, label: 'Événements' },
   { to: '/settings', icon: Settings, label: 'Paramètres' },
 ]
@@ -95,20 +97,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </main>
       </div>
 
-      {/* Mobile bottom navigation */}
-      <nav className="z-20 flex items-center justify-around border-t border-surface-2 bg-surface py-1 md:hidden">
+      {/* Mobile bottom navigation (scrolls horizontally if it overflows) */}
+      <nav className="z-20 flex items-center justify-between gap-1 overflow-x-auto border-t border-surface-2 bg-surface px-1 py-1 md:hidden">
         {navItems.map(({ to, icon: Icon, label }) => (
           <NavLink
             key={to}
             to={to}
             className={({ isActive }) =>
               cn(
-                'flex flex-col items-center gap-0.5 px-2 py-1.5 text-xs transition-colors',
+                'flex shrink-0 flex-col items-center gap-0.5 px-2.5 py-1.5 text-[10px] transition-colors',
                 isActive ? 'text-emerald-400' : 'text-slate-500',
               )
             }
           >
-            <Icon size={21} />
+            <Icon size={20} />
             <span className="leading-none">{label.split(' ')[0]}</span>
           </NavLink>
         ))}
