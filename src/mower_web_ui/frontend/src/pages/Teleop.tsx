@@ -1,9 +1,46 @@
 import { useRef, useCallback } from 'react'
-import { Gamepad2, AlertTriangle } from 'lucide-react'
+import { Gamepad2, AlertTriangle, ArrowDown, RotateCcw } from 'lucide-react'
 import { RobotMap } from '../components/RobotMap'
+import { Button } from '../components/ui/button'
 import { useMqttStore } from '../store/mqttStore'
 import { useRobotStore } from '../store/robotStore'
 import { encodeBsonDoubles } from '../shared/bson'
+
+const REVERSE_SPEED = 0.25 // m/s backward while the recovery button is held
+
+// Hold-to-reverse button — drives the robot slowly backward to free it from an
+// obstacle. Publishes teleop at 10 Hz while pressed, stops on release.
+function ReverseButton() {
+  const publish = useMqttStore((s) => s.publish)
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  function start(e: React.PointerEvent<HTMLButtonElement>) {
+    e.currentTarget.setPointerCapture(e.pointerId)
+    if (intervalRef.current) return
+    const send = () => publish('teleop', encodeBsonDoubles({ vx: -REVERSE_SPEED, vz: 0 }))
+    send()
+    intervalRef.current = setInterval(send, 100)
+  }
+
+  function stop() {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current)
+      intervalRef.current = null
+    }
+    publish('teleop', encodeBsonDoubles({ vx: 0, vz: 0 }))
+  }
+
+  return (
+    <button
+      onPointerDown={start}
+      onPointerUp={stop}
+      onPointerCancel={stop}
+      className="flex w-full select-none items-center justify-center gap-2 rounded-xl bg-amber-600 py-4 text-base font-semibold text-white touch-none active:bg-amber-700"
+    >
+      <ArrowDown size={20} /> Marche arrière (maintenir)
+    </button>
+  )
+}
 
 // Touch joystick for manual control — publishes teleop {vx, vz} at 10 Hz.
 function Joystick() {
@@ -78,6 +115,7 @@ function Joystick() {
 
 export function Teleop() {
   const emergency = useRobotStore((s) => s.emergency)
+  const publish = useMqttStore((s) => s.publish)
 
   return (
     <div className="flex h-full flex-col lg:flex-row">
@@ -89,14 +127,34 @@ export function Teleop() {
       {/* Joystick panel */}
       <div className="flex flex-col items-center justify-center gap-4 p-6 lg:w-80">
         {emergency && (
-          <div className="flex w-full items-center gap-2 rounded-lg border border-red-800 bg-red-950/50 p-3 text-sm text-red-300">
-            <AlertTriangle size={16} />
-            Mode urgence — téléop indisponible
+          <div className="flex w-full flex-col gap-3 rounded-lg border border-red-800 bg-red-950/50 p-3">
+            <div className="flex items-center gap-2 text-sm text-red-300">
+              <AlertTriangle size={16} />
+              Urgence active — le robot est bloqué. La lame reste coupée.
+            </div>
+            <Button
+              variant="destructive"
+              className="w-full"
+              onClick={() => publish('action', 'mower_logic/reset_emergency')}
+            >
+              <RotateCcw size={16} /> Débloquer (lever l'urgence)
+            </Button>
+            <p className="text-xs text-red-400/70">
+              Si le robot s'est soulevé sur un obstacle, lève l'urgence puis recule pour le
+              dégager. Une urgence d'origine physique (lift/collision) peut se relever seule une
+              fois l'obstacle franchi.
+            </p>
           </div>
         )}
+
         <Joystick />
+
+        {/* Recovery: reverse out of an obstacle */}
+        <ReverseButton />
+
         <p className="text-center text-xs text-slate-500">
-          Maintiens le doigt sur le joystick pour piloter. Relâche pour arrêter.
+          Maintiens le joystick pour piloter (lame toujours coupée en téléop). Relâche pour
+          arrêter.
         </p>
       </div>
     </div>
