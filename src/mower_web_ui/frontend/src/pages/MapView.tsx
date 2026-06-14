@@ -1,5 +1,8 @@
+import { useState } from 'react'
+import { Footprints } from 'lucide-react'
 import { RobotMap } from '../components/RobotMap'
 import { useRobotStore } from '../store/robotStore'
+import { cn } from '../shared/utils'
 
 const LEGEND = [
   { color: '#10b981', label: 'Tonte' },
@@ -10,6 +13,7 @@ const LEGEND = [
 
 export function MapView() {
   const state = useRobotStore((s) => s.state)
+  const [coverage, setCoverage] = useState(false)
 
   return (
     <div className="relative flex h-full flex-col">
@@ -24,12 +28,25 @@ export function MapView() {
         ))}
       </div>
 
-      {/* State badge */}
-      <div className="absolute left-3 top-3 z-[1000] rounded-lg border border-surface-2 bg-surface/90 px-2 py-1 text-xs text-slate-300 backdrop-blur-sm">
-        {state}
+      {/* State badge + coverage toggle */}
+      <div className="absolute left-3 top-3 z-[1000] flex flex-col gap-2">
+        <div className="rounded-lg border border-surface-2 bg-surface/90 px-2 py-1 text-xs text-slate-300 backdrop-blur-sm">
+          {state}
+        </div>
+        <button
+          onClick={() => setCoverage((c) => !c)}
+          className={cn(
+            'flex items-center gap-1.5 rounded-lg border px-2 py-1 text-xs backdrop-blur-sm transition-colors',
+            coverage
+              ? 'border-emerald-600 bg-emerald-500/20 text-emerald-300'
+              : 'border-surface-2 bg-surface/90 text-slate-300 hover:bg-surface-2',
+          )}
+        >
+          <Footprints size={13} /> Couverture
+        </button>
       </div>
 
-      <RobotMap className="flex-1" />
+      <RobotMap className="flex-1" coverage={coverage} />
     </div>
   )
 }

@@ -22,3 +22,13 @@ export function formatDate(unixSeconds: number): string {
     minute: '2-digit',
   })
 }
+
+/** Human-readable duration from seconds, e.g. "2 h 05" or "12 min". */
+export function formatDuration(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds))
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  if (h > 0) return `${h} h ${String(m).padStart(2, '0')}`
+  if (m > 0) return `${m} min`
+  return `${s} s`
+}

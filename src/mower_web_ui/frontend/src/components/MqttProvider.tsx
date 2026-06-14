@@ -8,6 +8,9 @@ import { useEventsStore } from '../store/eventsStore'
 import { useSensorsStore, type SensorInfo } from '../store/sensorsStore'
 import { useSchedulerStore } from '../store/schedulerStore'
 import { useMapEditStore } from '../store/mapEditStore'
+import { useStatsStore } from '../store/statsStore'
+import { useNotifyStore } from '../store/notifyStore'
+import { useSensorHistoryStore } from '../store/sensorHistoryStore'
 
 export function MqttProvider({ children }: { children: React.ReactNode }) {
   const brokerUrl = useSettingsStore((s) => s.brokerUrl)
@@ -18,6 +21,9 @@ export function MqttProvider({ children }: { children: React.ReactNode }) {
   const { setInfos, setValue } = useSensorsStore()
   const setSchedulerState = useSchedulerStore((s) => s.setFromState)
   const setMapEditResult = useMapEditStore((s) => s.setResult)
+  const setStatsState = useStatsStore((s) => s.setFromState)
+  const setNotifyState = useNotifyStore((s) => s.setFromState)
+  const recordHistory = useSensorHistoryStore((s) => s.record)
   const clientRef = useRef<MqttClient | null>(null)
 
   useEffect(() => {
@@ -42,6 +48,8 @@ export function MqttProvider({ children }: { children: React.ReactNode }) {
         'rpc/response',
         'scheduler/state',
         'map/edit/result',
+        'stats/json',
+        'notify/state',
       ])
       // Load event history via RPC
       const reqId = Math.random().toString(36).slice(2)
@@ -63,6 +71,8 @@ export function MqttProvider({ children }: { children: React.ReactNode }) {
         if (topic.startsWith('sensors/') && topic.endsWith('/data')) {
           const id = topic.slice('sensors/'.length, -'/data'.length)
           setValue(id, raw)
+          const num = Number(raw)
+          if (Number.isFinite(num)) recordHistory(`sensor:${id}`, num)
           return
         }
 
@@ -79,6 +89,15 @@ export function MqttProvider({ children }: { children: React.ReactNode }) {
             break
           case 'robot_state/json':
             updateRobot(data)
+            if (typeof data.battery_percentage === 'number') {
+              recordHistory('robot:battery', (data.battery_percentage as number) * 100)
+            }
+            break
+          case 'stats/json':
+            setStatsState(data)
+            break
+          case 'notify/state':
+            setNotifyState(data)
             break
           case 'position/json':
             updatePosition(data)
