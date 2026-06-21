@@ -8,13 +8,11 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from 'recharts'
-import { History as HistoryIcon, AlertTriangle, RefreshCw } from 'lucide-react'
+import { History as HistoryIcon, RefreshCw } from 'lucide-react'
 import { useMqttStore } from '../store/mqttStore'
 import { useHistoryStore, type HistoryRange, type HistoryMetric } from '../store/historyStore'
-import { useIncidentsStore } from '../store/incidentsStore'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
-import { RobotMap } from '../components/RobotMap'
 
 const RANGES: { value: HistoryRange; label: string }[] = [
   { value: 'day', label: '24 h' },
@@ -46,7 +44,6 @@ export function History() {
   const publish = useMqttStore((s) => s.publish)
   const connected = useMqttStore((s) => s.connected)
   const { metrics, series, range, loading, setRange, setLoading } = useHistoryStore()
-  const incidents = useIncidentsStore((s) => s.incidents)
 
   function request(r: HistoryRange) {
     setLoading(true)
@@ -147,24 +144,6 @@ export function History() {
           </CardContent>
         </Card>
       ))}
-
-      {/* Incident heatmap */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-1.5">
-            <AlertTriangle size={14} className="text-red-400" /> Carte des incidents ({incidents.length})
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="mb-2 text-xs text-slate-500">
-            Points rouges = endroits où le robot s'est mis en urgence. Les zones denses signalent un
-            problème récurrent (obstacle, GPS, terrain).
-          </p>
-          <div className="h-80 overflow-hidden rounded-lg">
-            <RobotMap className="h-full w-full" showIncidents showTrail={false} />
-          </div>
-        </CardContent>
-      </Card>
     </div>
   )
 }

@@ -15,7 +15,7 @@ function newId() {
 export function Planning() {
   const publish = useMqttStore((s) => s.publish)
   const connected = useMqttStore((s) => s.connected)
-  const { enabled, schedule, loaded } = useSchedulerStore()
+  const { enabled, schedule, loaded, autoMode } = useSchedulerStore()
   const areas = useMapStore((s) => s.areas)
 
   // Mow areas only; their position in this list IS the area_index.
@@ -106,6 +106,13 @@ export function Planning() {
           {enabled ? 'Planning actif' : 'Planning désactivé'}
         </Button>
       </div>
+
+      {loaded && autoMode !== 0 && autoMode !== null && (
+        <div className="rounded-lg border border-amber-800 bg-amber-950/40 p-3 text-sm text-amber-200">
+          La planification ne s'applique qu'en mode <strong>Manuel</strong>. En Semi-auto / Auto le
+          robot gère lui-même la tonte. Change le mode dans <strong>Paramètres</strong>.
+        </div>
+      )}
 
       {/* Manual triggers */}
       <Card>

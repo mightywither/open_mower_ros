@@ -35,6 +35,17 @@ export function simplify(points: XY[], tolerance: number): XY[] {
   return [points[0], points[end]]
 }
 
+// Shoelace area of a polygon ring, in the same (metric) units as the points.
+export function polygonArea(points: XY[]): number {
+  let a = 0
+  const n = points.length
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n
+    a += points[i].x * points[j].y - points[j].x * points[i].y
+  }
+  return Math.abs(a / 2)
+}
+
 // Simplify a closed polygon ring (keeps it closed-ish; Leaflet auto-closes).
 export function simplifyRing(points: XY[], tolerance: number): XY[] {
   if (points.length <= 4) return points.slice()

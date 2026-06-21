@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Footprints } from 'lucide-react'
+import { Footprints, RotateCcw } from 'lucide-react'
 import { RobotMap } from '../components/RobotMap'
 import { useRobotStore } from '../store/robotStore'
+import { useMqttStore } from '../store/mqttStore'
 import { cn } from '../shared/utils'
 
 const LEGEND = [
@@ -13,7 +14,8 @@ const LEGEND = [
 
 export function MapView() {
   const state = useRobotStore((s) => s.state)
-  const [coverage, setCoverage] = useState(false)
+  const publish = useMqttStore((s) => s.publish)
+  const [coverage, setCoverage] = useState(true)
 
   return (
     <div className="relative flex h-full flex-col">
@@ -44,6 +46,18 @@ export function MapView() {
         >
           <Footprints size={13} /> Couverture
         </button>
+        {coverage && (
+          <button
+            onClick={() => {
+              if (confirm('Réinitialiser la couverture de tonte enregistrée ?')) {
+                publish('coverage/cmd', JSON.stringify({ cmd: 'clear' }))
+              }
+            }}
+            className="flex items-center gap-1.5 rounded-lg border border-surface-2 bg-surface/90 px-2 py-1 text-xs text-slate-300 backdrop-blur-sm transition-colors hover:bg-surface-2"
+          >
+            <RotateCcw size={13} /> Réinitialiser
+          </button>
+        )}
       </div>
 
       <RobotMap className="flex-1" coverage={coverage} />

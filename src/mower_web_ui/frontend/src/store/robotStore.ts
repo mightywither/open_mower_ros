@@ -55,9 +55,10 @@ export const useRobotStore = create<RobotStore>((set) => ({
   update: (data) => {
     const pose = data.pose as Record<string, unknown> | undefined
     set({
-      // battery_percentage is a 0..1 fraction from the firmware; GPS is already 0..100.
+      // Both battery_percentage and gps_percentage are 0..1 fractions from the
+      // firmware (gps can be -1 when there is no orientation). Scale to 0..100.
       batteryPct: ((data.battery_percentage as number) ?? 0) * 100,
-      gpsPct: (data.gps_percentage as number) ?? 0,
+      gpsPct: Math.max(0, ((data.gps_percentage as number) ?? 0) * 100),
       actionProgress: (data.current_action_progress as number) ?? 0,
       state: (data.current_state as string) ?? 'INCONNU',
       subState: (data.current_sub_state as string) ?? '',

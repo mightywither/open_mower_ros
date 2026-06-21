@@ -1,47 +1,18 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { Battery, Satellite, MapPin, Droplets, Zap, Activity, Clock, Maximize2, Hourglass } from 'lucide-react'
+import { Battery, Satellite, MapPin, Droplets, Zap, Sprout, Clock, Maximize2 } from 'lucide-react'
 import { useRobotStore } from '../store/robotStore'
 import { useEventsStore } from '../store/eventsStore'
 import { useMqttStore } from '../store/mqttStore'
-import { useStatsStore } from '../store/statsStore'
+import { useMapStore } from '../store/mapStore'
+import { useCoverageStore } from '../store/coverageStore'
 import { Card, CardTitle, CardContent, CardHeader } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { Progress } from '../components/ui/progress'
 import { RobotMap } from '../components/RobotMap'
 import { QuickActions } from '../components/QuickActions'
-import { cn, formatDate, formatDuration } from '../shared/utils'
-
-const MOWING_STATES = new Set(['AUTONOMOUS', 'MOWING'])
-
-/**
- * Honest estimate of remaining mowing time. Prefers elapsed session time
- * (from stats current.session_start_iso) divided by progress; falls back to
- * null when there isn't enough signal. It is intentionally rough.
- */
-function useEstimatedRemaining(
-  isMowing: boolean,
-  progress: number,
-  sessionStartIso: string | null,
-): number | null {
-  const [now, setNow] = useState(Date.now())
-  useEffect(() => {
-    if (!isMowing) return
-    const t = setInterval(() => setNow(Date.now()), 5000)
-    return () => clearInterval(t)
-  }, [isMowing])
-
-  return useMemo(() => {
-    if (!isMowing || progress <= 0.02 || progress >= 0.999) return null
-    if (!sessionStartIso) return null
-    const start = Date.parse(sessionStartIso)
-    if (Number.isNaN(start)) return null
-    const elapsed = Math.max(0, (now - start) / 1000)
-    if (elapsed < 5) return null
-    const total = elapsed / progress
-    return Math.max(0, total - elapsed)
-  }, [isMowing, progress, sessionStartIso, now])
-}
+import { cn, formatDate } from '../shared/utils'
+import { polygonArea } from '../shared/geometry'
 
 const STATE_STYLES: Record<string, { label: string; badge: string; dot: string }> = {
   IDLE: { label: 'En veille', badge: 'secondary', dot: 'bg-slate-400' },
@@ -77,19 +48,24 @@ const EVENT_ICONS: Record<string, string> = {
 }
 
 export function Dashboard() {
-  const { state, subState, batteryPct, gpsPct, emergency, isCharging, rainDetected, area, path, actionProgress } =
+  const { state, subState, batteryPct, gpsPct, emergency, isCharging, rainDetected, area, path } =
     useRobotStore()
   const connected = useMqttStore((s) => s.connected)
   const events = useEventsStore((s) => s.events)
-  const statsCurrent = useStatsStore((s) => s.current)
+  const areas = useMapStore((s) => s.areas)
+  const cells = useCoverageStore((s) => s.cells)
+  const cell = useCoverageStore((s) => s.cell)
   const info = stateInfo(state, emergency)
 
-  const isMowing = MOWING_STATES.has(state) && !emergency
-  const remaining = useEstimatedRemaining(
-    isMowing,
-    actionProgress,
-    statsCurrent.session_start_iso,
-  )
+  // Coverage % = mown area (covered grid cells) / total mowable area.
+  const coveragePct = useMemo(() => {
+    const mowable = areas
+      .filter((a) => a.properties.type === 'mow')
+      .reduce((s, a) => s + polygonArea(a.outline), 0)
+    if (mowable <= 0) return 0
+    const mown = cells.length * cell * cell
+    return Math.min(100, (mown / mowable) * 100)
+  }, [areas, cells, cell])
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -198,47 +174,19 @@ export function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Progression */}
+        {/* Coverage (mown area / total mowable area) */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-1.5">
-              <Activity size={13} /> Progression
+              <Sprout size={13} /> Couverture
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="mb-2 text-2xl font-bold text-white">
-              {(actionProgress * 100).toFixed(0)}%
-            </div>
-            <Progress value={actionProgress * 100} />
+            <div className="mb-2 text-2xl font-bold text-white">{coveragePct.toFixed(0)}%</div>
+            <Progress value={coveragePct} indicatorClassName="bg-emerald-500" />
           </CardContent>
         </Card>
       </div>
-
-      {/* Estimated remaining time (only while mowing) */}
-      {isMowing && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-1.5">
-              <Hourglass size={13} /> Temps restant estimé
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {remaining !== null ? (
-              <>
-                <div className="text-2xl font-bold text-white">≈ {formatDuration(remaining)}</div>
-                <div className="mt-1 text-xs text-slate-500">
-                  Estimation approximative basée sur la progression ({(actionProgress * 100).toFixed(0)} %)
-                  et le temps écoulé.
-                </div>
-              </>
-            ) : (
-              <div className="text-sm text-slate-500">
-                Estimation indisponible (progression insuffisante pour le moment).
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
 
       {/* Recent events */}
       <Card>

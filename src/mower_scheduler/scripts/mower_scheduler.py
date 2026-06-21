@@ -60,6 +60,9 @@ class MowerScheduler:
         self._schedule = []
         self._auto_mode = None  # int 0/1/2, from dynamic_reconfigure
         self._rain_mode = None  # int 0/1/2/3, from dynamic_reconfigure
+        # Desired dynamic_reconfigure params (name->value), persisted and
+        # re-applied on (re)connect so the mode survives a mower_logic respawn.
+        self._desired_params = {}
         self._last_fired = {}  # entry_id+kind -> "YYYY-MM-DD HH:MM" to debounce within the minute
 
         # Live area tracking from mower_logic/current_state, for area_index targeting.
@@ -95,6 +98,7 @@ class MowerScheduler:
                 data = json.load(f)
             self._enabled = bool(data.get("enabled", True))
             self._schedule = data.get("schedule", [])
+            self._desired_params = data.get("desired_params", {})
             rospy.loginfo(f"mower_scheduler: loaded schedule ({len(self._schedule)} entries)")
         except FileNotFoundError:
             pass
@@ -106,7 +110,15 @@ class MowerScheduler:
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "w") as f:
-                json.dump({"enabled": self._enabled, "schedule": self._schedule}, f, indent=2)
+                json.dump(
+                    {
+                        "enabled": self._enabled,
+                        "schedule": self._schedule,
+                        "desired_params": self._desired_params,
+                    },
+                    f,
+                    indent=2,
+                )
         except Exception as e:
             rospy.logwarn(f"mower_scheduler: could not save schedule: {e}")
 
@@ -119,6 +131,15 @@ class MowerScheduler:
                     "/mower_logic", timeout=5, config_callback=self._on_config
                 )
                 rospy.loginfo("mower_scheduler: connected to /mower_logic dynamic_reconfigure")
+                # Re-apply persisted params (mode survives a mower_logic respawn).
+                with self._lock:
+                    desired = dict(self._desired_params)
+                for name, value in desired.items():
+                    try:
+                        self._dyn_client.update_configuration({name: value})
+                        rospy.loginfo(f"mower_scheduler: re-applied {name}={value}")
+                    except Exception as e:
+                        rospy.logwarn(f"mower_scheduler: could not re-apply {name}: {e}")
             except Exception:
                 rate.sleep()
 
@@ -134,8 +155,11 @@ class MowerScheduler:
             return
         lo, hi = PARAM_RANGES[name]
         value = max(lo, min(hi, int(value)))
+        # Remember the desired value so it persists and is re-applied on respawn.
+        self._desired_params[name] = value
+        self._save()
         if self._dyn_client is None:
-            rospy.logwarn(f"mower_scheduler: dynamic_reconfigure not ready, cannot set {name}")
+            rospy.logwarn(f"mower_scheduler: dynamic_reconfigure not ready, will apply {name} on connect")
             return
         try:
             self._dyn_client.update_configuration({name: value})
@@ -251,6 +275,11 @@ class MowerScheduler:
 
     def _tick(self, _event):
         if not self._enabled:
+            return
+        # The schedule only makes sense in MANUAL mode: in Semi-auto/Auto the
+        # robot manages itself (one cycle / continuous loop), so scheduled
+        # triggers would conflict. None = mode unknown yet -> don't fire.
+        if self._auto_mode != 0:
             return
         now = datetime.now()
         weekday = now.weekday()  # 0=Mon..6=Sun
