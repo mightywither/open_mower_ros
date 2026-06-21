@@ -13,6 +13,7 @@ import { useNotifyStore } from '../store/notifyStore'
 import { useSensorHistoryStore } from '../store/sensorHistoryStore'
 import { useHistoryStore } from '../store/historyStore'
 import { useIncidentsStore } from '../store/incidentsStore'
+import { useCoverageStore } from '../store/coverageStore'
 
 export function MqttProvider({ children }: { children: React.ReactNode }) {
   const brokerUrl = useSettingsStore((s) => s.brokerUrl)
@@ -29,6 +30,7 @@ export function MqttProvider({ children }: { children: React.ReactNode }) {
   const setHistoryMetrics = useHistoryStore((s) => s.setMetrics)
   const setHistoryResponse = useHistoryStore((s) => s.setResponse)
   const setIncidents = useIncidentsStore((s) => s.setIncidents)
+  const setCoverage = useCoverageStore((s) => s.setFromState)
   const clientRef = useRef<MqttClient | null>(null)
 
   useEffect(() => {
@@ -58,6 +60,7 @@ export function MqttProvider({ children }: { children: React.ReactNode }) {
         'history/metrics',
         'history/response',
         'incidents/json',
+        'coverage/json',
       ])
       // Load event history via RPC
       const reqId = Math.random().toString(36).slice(2)
@@ -115,6 +118,9 @@ export function MqttProvider({ children }: { children: React.ReactNode }) {
             break
           case 'incidents/json':
             setIncidents((data as { incidents?: [] }).incidents ?? [])
+            break
+          case 'coverage/json':
+            setCoverage(data as Parameters<typeof setCoverage>[0])
             break
           case 'position/json':
             updatePosition(data)

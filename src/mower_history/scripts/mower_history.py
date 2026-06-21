@@ -37,8 +37,13 @@ METRICS_TOPIC = "history/metrics"
 REQUEST_TOPIC = "history/request"
 RESPONSE_TOPIC = "history/response"
 INCIDENTS_TOPIC = "incidents/json"
+COVERAGE_TOPIC = "coverage/json"
+COVERAGE_CMD_TOPIC = "coverage/cmd"
 
 MAX_INCIDENTS = 1000
+COVERAGE_CELL = 0.5  # metres per coverage grid cell
+MAX_COVERAGE_CELLS = 30000
+MOWING_STATES = {"AUTONOMOUS", "MOWING"}
 
 STEP = 60  # seconds between consolidated samples
 
@@ -82,6 +87,11 @@ class MowerHistory:
         self._prev_emergency = False
         self._incidents = self._load_incidents()
 
+        # Persistent mowing coverage (grid of visited cells while mowing)
+        self._mowing = False
+        self._covered = self._load_coverage()  # set of (gx, gy) int grid indices
+        self._coverage_dirty = False
+
         self._mqtt = mqtt.Client()
         self._mqtt.on_connect = self._on_connect
         self._mqtt.on_message = self._on_message
@@ -89,6 +99,8 @@ class MowerHistory:
 
         # Flush buffered values into the RRDs once per step.
         rospy.Timer(rospy.Duration(STEP), lambda _e: self._flush())
+        # Persist/publish coverage more often so the map fills in promptly.
+        rospy.Timer(rospy.Duration(15), lambda _e: self._flush_coverage())
         rospy.loginfo("mower_history: started")
 
     # ----- MQTT -----
@@ -104,10 +116,11 @@ class MowerHistory:
         rospy.loginfo("mower_history: MQTT connected")
         client.subscribe(
             [("sensors/+/data", 0), ("sensor_infos/json", 0), ("robot_state/json", 0),
-             ("position/json", 0), (REQUEST_TOPIC, 0)]
+             ("position/json", 0), (REQUEST_TOPIC, 0), (COVERAGE_CMD_TOPIC, 0)]
         )
         self._publish_metrics()
         self._publish_incidents()
+        self._publish_coverage()
 
     def _on_message(self, client, userdata, msg):
         topic = msg.topic
@@ -129,14 +142,22 @@ class MowerHistory:
                 data = json.loads(msg.payload.decode("utf-8"))
                 if isinstance(data.get("x"), (int, float)) and isinstance(data.get("y"), (int, float)):
                     self._pos = (float(data["x"]), float(data["y"]))
+                    self._track_coverage()
             elif topic == "robot_state/json":
                 data = json.loads(msg.payload.decode("utf-8"))
                 if isinstance(data.get("battery_percentage"), (int, float)):
                     self._record("battery_pct", float(data["battery_percentage"]) * 100.0)
                 if isinstance(data.get("gps_percentage"), (int, float)):
                     self._record("gps_pct", float(data["gps_percentage"]))
-                self._track_incident(bool(data.get("emergency")),
-                                     str(data.get("current_state", "")))
+                emergency = bool(data.get("emergency"))
+                state = str(data.get("current_state", ""))
+                self._track_incident(emergency, state)
+                self._mowing = state in MOWING_STATES and not emergency
+            elif topic == COVERAGE_CMD_TOPIC:
+                if json.loads(msg.payload.decode("utf-8")).get("cmd") == "clear":
+                    self._covered = set()
+                    self._save_coverage()
+                    self._publish_coverage()
             elif topic == REQUEST_TOPIC:
                 self._handle_request(json.loads(msg.payload.decode("utf-8")))
         except (ValueError, KeyError, json.JSONDecodeError):
@@ -223,6 +244,49 @@ class MowerHistory:
 
     def _publish_incidents(self):
         self._mqtt.publish(INCIDENTS_TOPIC, json.dumps({"incidents": self._incidents}), retain=True)
+
+    # ----- coverage (persistent mowing grid) -----
+    def _coverage_path(self):
+        return os.path.join(history_dir(), "coverage.json")
+
+    def _load_coverage(self):
+        try:
+            with open(self._coverage_path()) as f:
+                return {tuple(c) for c in json.load(f).get("cells", [])}
+        except FileNotFoundError:
+            return set()
+        except Exception as e:
+            rospy.logwarn(f"mower_history: could not load coverage: {e}")
+            return set()
+
+    def _save_coverage(self):
+        try:
+            with open(self._coverage_path(), "w") as f:
+                json.dump({"cells": [list(c) for c in self._covered]}, f)
+        except Exception as e:
+            rospy.logwarn(f"mower_history: could not save coverage: {e}")
+
+    def _track_coverage(self):
+        if not self._mowing or self._pos is None:
+            return
+        if len(self._covered) >= MAX_COVERAGE_CELLS:
+            return
+        cell = (round(self._pos[0] / COVERAGE_CELL), round(self._pos[1] / COVERAGE_CELL))
+        if cell not in self._covered:
+            self._covered.add(cell)
+            self._coverage_dirty = True
+
+    def _publish_coverage(self):
+        # Publish cell centres (metres) so the UI can draw squares.
+        cells = [[gx * COVERAGE_CELL, gy * COVERAGE_CELL] for gx, gy in self._covered]
+        payload = {"cell": COVERAGE_CELL, "cells": cells}
+        self._mqtt.publish(COVERAGE_TOPIC, json.dumps(payload), retain=True)
+
+    def _flush_coverage(self):
+        if self._coverage_dirty:
+            self._coverage_dirty = False
+            self._save_coverage()
+            self._publish_coverage()
 
     # ----- serving -----
     def _publish_metrics(self):

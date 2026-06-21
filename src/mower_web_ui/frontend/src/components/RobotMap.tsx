@@ -1,9 +1,12 @@
 import { memo, useMemo } from 'react'
 import L from 'leaflet'
-import { MapContainer, Polygon, Polyline, Marker, CircleMarker, useMap } from 'react-leaflet'
+import { MapContainer, Polygon, Polyline, Marker, CircleMarker, Rectangle, useMap } from 'react-leaflet'
 import { useEffect, useRef } from 'react'
 import { useMapStore, type MapArea, type MapPoint } from '../store/mapStore'
 import { useIncidentsStore } from '../store/incidentsStore'
+import { useCoverageStore } from '../store/coverageStore'
+
+const MAX_DISPLAY_CELLS = 8000 // cap rendered coverage squares for performance
 
 // Local metric frame (ENU: x=East, y=North) -> Leaflet CRS.Simple.
 // CRS.Simple has lat increasing upward and lng increasing rightward, so
@@ -82,6 +85,39 @@ function FitBounds() {
 
   return null
 }
+
+// Persistent mowing coverage: green squares for visited grid cells.
+const CoverageLayer = memo(function CoverageLayer() {
+  const cells = useCoverageStore((s) => s.cells)
+  const cell = useCoverageStore((s) => s.cell)
+
+  const rects = useMemo(() => {
+    const half = cell / 2
+    const stride = cells.length > MAX_DISPLAY_CELLS ? Math.ceil(cells.length / MAX_DISPLAY_CELLS) : 1
+    const out: L.LatLngBoundsLiteral[] = []
+    for (let i = 0; i < cells.length; i += stride) {
+      const [x, y] = cells[i]
+      // bounds: [[lat=y-half, lng=x-half], [lat=y+half, lng=x+half]]
+      out.push([
+        [y - half, x - half],
+        [y + half, x + half],
+      ])
+    }
+    return out
+  }, [cells, cell])
+
+  return (
+    <>
+      {rects.map((bounds, i) => (
+        <Rectangle
+          key={i}
+          bounds={bounds}
+          pathOptions={{ stroke: false, fillColor: '#34d399', fillOpacity: 0.35 }}
+        />
+      ))}
+    </>
+  )
+})
 
 // Incident heatmap: red circles where the robot went into emergency.
 function IncidentsLayer() {
@@ -174,25 +210,13 @@ const StaticLayers = memo(function StaticLayers({
 
 // High-frequency layers (robot marker + trail). Only this small subtree
 // re-renders on position updates.
-function DynamicLayers({ showTrail, coverage }: { showTrail: boolean; coverage: boolean }) {
+function DynamicLayers({ showTrail }: { showTrail: boolean }) {
   const position = useMapStore((s) => s.position)
   const trail = useMapStore((s) => s.trail)
   const trailLatLngs = useMemo(() => trail.map(toLatLng), [trail])
 
   return (
     <>
-      {coverage && trailLatLngs.length > 1 && (
-        <Polyline
-          positions={trailLatLngs}
-          pathOptions={{
-            color: '#34d399',
-            weight: 18,
-            opacity: 0.25,
-            lineCap: 'round',
-            lineJoin: 'round',
-          }}
-        />
-      )}
       {showTrail && trailLatLngs.length > 1 && (
         <Polyline
           positions={trailLatLngs}
@@ -225,6 +249,7 @@ export function RobotMap({
       crs={L.CRS.Simple}
       center={[0, 0]}
       zoom={4}
+      preferCanvas
       className={className ?? 'h-full w-full'}
       zoomControl={interactive}
       dragging={interactive}
@@ -236,13 +261,14 @@ export function RobotMap({
       attributionControl={false}
     >
       <FitBounds />
+      {coverage && <CoverageLayer />}
       <StaticLayers
         onAreaClick={onAreaClick}
         onDockClick={onDockClick}
         highlightedAreaId={highlightedAreaId}
       />
       {showIncidents && <IncidentsLayer />}
-      <DynamicLayers showTrail={showTrail} coverage={coverage} />
+      <DynamicLayers showTrail={showTrail} />
     </MapContainer>
   )
 }

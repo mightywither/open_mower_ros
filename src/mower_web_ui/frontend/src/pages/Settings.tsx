@@ -286,13 +286,27 @@ export function Settings() {
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-xs text-slate-500">
-            La trace de déplacement du robot est conservée en mémoire jusqu'au rechargement de la
-            page.
+            La trace (ligne fine) est gardée en mémoire jusqu'au rechargement. La couverture de
+            tonte (cellules vertes) est persistée sur le robot.
           </p>
-          <Button variant="outline" size="sm" className="w-full sm:w-auto" onClick={clearTrail}>
-            <RefreshCw size={14} />
-            Effacer la trace
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={clearTrail}>
+              <RefreshCw size={14} />
+              Effacer la trace
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (confirm('Réinitialiser la couverture de tonte enregistrée ?')) {
+                  publish('coverage/cmd', JSON.stringify({ cmd: 'clear' }))
+                }
+              }}
+            >
+              <RefreshCw size={14} />
+              Réinitialiser la couverture
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
