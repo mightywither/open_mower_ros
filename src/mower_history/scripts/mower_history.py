@@ -47,7 +47,8 @@ COVERAGE_CELL = 0.5  # metres per coverage grid cell
 MAX_COVERAGE_CELLS = 30000
 FIELD_CELL = 1.0  # metres per GPS/WiFi heatmap cell
 MAX_FIELD_CELLS = 20000
-WIFI_POLL_S = 10  # how often to sample WiFi signal
+WIFI_POLL_S = 5  # fallback WiFi sampling while stationary
+WIFI_MIN_INTERVAL = 1.0  # min seconds between movement-driven WiFi samples
 MOWING_STATES = {"AUTONOMOUS", "MOWING"}
 
 
@@ -157,6 +158,7 @@ class MowerHistory:
         # GPS-quality and WiFi-signal heatmaps (running mean per cell)
         self._gps = FieldGrid(os.path.join(history_dir(), "gps_field.json"), FIELD_CELL)
         self._wifi = FieldGrid(os.path.join(history_dir(), "wifi_field.json"), FIELD_CELL)
+        self._last_wifi = 0.0  # throttle for movement-driven WiFi sampling
 
         self._mqtt = mqtt.Client()
         self._mqtt.on_connect = self._on_connect
@@ -165,10 +167,11 @@ class MowerHistory:
 
         # Flush buffered values into the RRDs once per step.
         rospy.Timer(rospy.Duration(STEP), lambda _e: self._flush())
-        # Persist/publish coverage + heatmaps more often so the maps fill promptly.
-        rospy.Timer(rospy.Duration(15), lambda _e: self._flush_coverage())
-        rospy.Timer(rospy.Duration(15), lambda _e: self._flush_fields())
-        # Sample WiFi signal at the current position.
+        # Persist/publish coverage + heatmaps often so the maps fill promptly.
+        rospy.Timer(rospy.Duration(8), lambda _e: self._flush_coverage())
+        rospy.Timer(rospy.Duration(8), lambda _e: self._flush_fields())
+        # Fallback WiFi sampling while the robot is stationary (movement-driven
+        # sampling happens in the position callback).
         rospy.Timer(rospy.Duration(WIFI_POLL_S), lambda _e: self._sample_wifi())
         rospy.loginfo("mower_history: started")
 
@@ -213,6 +216,12 @@ class MowerHistory:
                 if isinstance(data.get("x"), (int, float)) and isinstance(data.get("y"), (int, float)):
                     self._pos = (float(data["x"]), float(data["y"]))
                     self._track_coverage()
+                    # Sample WiFi as the robot moves (throttled) so the heatmap
+                    # fills densely along the path instead of every WIFI_POLL_S.
+                    now = rospy.get_time()
+                    if now - self._last_wifi >= WIFI_MIN_INTERVAL:
+                        self._last_wifi = now
+                        self._sample_wifi()
             elif topic == "robot_state/json":
                 data = json.loads(msg.payload.decode("utf-8"))
                 if isinstance(data.get("battery_percentage"), (int, float)):
