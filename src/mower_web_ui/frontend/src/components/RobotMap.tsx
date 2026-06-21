@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { memo, useMemo } from 'react'
 import L from 'leaflet'
 import { MapContainer, Polygon, Polyline, Marker, useMap } from 'react-leaflet'
 import { useEffect, useRef } from 'react'
@@ -98,6 +98,98 @@ export interface RobotMapProps {
   className?: string
 }
 
+// Static layers (areas + docking stations). Memoised and isolated from the
+// high-frequency robot/trail updates so the ~10k area points are NOT rebuilt on
+// every position tick (the main source of UI jank).
+const StaticLayers = memo(function StaticLayers({
+  onAreaClick,
+  onDockClick,
+  highlightedAreaId,
+}: {
+  onAreaClick?: (area: MapArea) => void
+  onDockClick?: () => void
+  highlightedAreaId?: string | null
+}) {
+  const areas = useMapStore((s) => s.areas)
+  const dockingStations = useMapStore((s) => s.dockingStations)
+
+  const polygons = useMemo(
+    () =>
+      areas.map((area) => {
+        const style = AREA_STYLES[area.properties.type] ?? AREA_STYLES.nav
+        const clickable = !!onAreaClick && area.properties.type === 'mow'
+        const highlighted = highlightedAreaId === area.id
+        return (
+          <Polygon
+            key={area.id}
+            positions={toLatLngs(area.outline)}
+            pathOptions={{
+              color: highlighted ? '#fbbf24' : style.color,
+              fillColor: highlighted ? '#fbbf24' : style.color,
+              fillOpacity: highlighted ? 0.4 : style.fillOpacity,
+              weight: highlighted ? 3 : 2,
+              interactive: clickable,
+            }}
+            eventHandlers={clickable ? { click: () => onAreaClick?.(area) } : undefined}
+          />
+        )
+      }),
+    [areas, highlightedAreaId, onAreaClick],
+  )
+
+  return (
+    <>
+      {polygons}
+      {dockingStations.map((ds) => (
+        <Marker
+          key={ds.id}
+          position={toLatLng(ds.position)}
+          icon={dockIcon(ds.heading ?? 0)}
+          eventHandlers={onDockClick ? { click: () => onDockClick() } : undefined}
+        />
+      ))}
+    </>
+  )
+})
+
+// High-frequency layers (robot marker + trail). Only this small subtree
+// re-renders on position updates.
+function DynamicLayers({ showTrail, coverage }: { showTrail: boolean; coverage: boolean }) {
+  const position = useMapStore((s) => s.position)
+  const trail = useMapStore((s) => s.trail)
+  const trailLatLngs = useMemo(() => trail.map(toLatLng), [trail])
+
+  return (
+    <>
+      {coverage && trailLatLngs.length > 1 && (
+        <Polyline
+          positions={trailLatLngs}
+          pathOptions={{
+            color: '#34d399',
+            weight: 18,
+            opacity: 0.25,
+            lineCap: 'round',
+            lineJoin: 'round',
+          }}
+        />
+      )}
+      {showTrail && trailLatLngs.length > 1 && (
+        <Polyline
+          positions={trailLatLngs}
+          pathOptions={{ color: '#10b981', weight: 2, opacity: 0.5 }}
+        />
+      )}
+      {position && (
+        <Marker
+          position={toLatLng(position)}
+          icon={robotIcon(position.heading)}
+          zIndexOffset={1000}
+        />
+      )}
+    </>
+  )
+}
+
 export function RobotMap({
   interactive = true,
   showTrail = true,
@@ -107,13 +199,6 @@ export function RobotMap({
   coverage = false,
   className,
 }: RobotMapProps) {
-  const areas = useMapStore((s) => s.areas)
-  const dockingStations = useMapStore((s) => s.dockingStations)
-  const position = useMapStore((s) => s.position)
-  const trail = useMapStore((s) => s.trail)
-
-  const trailLatLngs = useMemo(() => trail.map(toLatLng), [trail])
-
   return (
     <MapContainer
       crs={L.CRS.Simple}
@@ -130,70 +215,12 @@ export function RobotMap({
       attributionControl={false}
     >
       <FitBounds />
-
-      {/* Areas */}
-      {areas.map((area) => {
-        const style = AREA_STYLES[area.properties.type] ?? AREA_STYLES.nav
-        const clickable = !!onAreaClick && area.properties.type === 'mow'
-        const highlighted = highlightedAreaId === area.id
-        return (
-          <Polygon
-            key={area.id}
-            positions={toLatLngs(area.outline)}
-            pathOptions={{
-              color: highlighted ? '#fbbf24' : style.color,
-              fillColor: highlighted ? '#fbbf24' : style.color,
-              fillOpacity: highlighted ? 0.4 : style.fillOpacity,
-              weight: highlighted ? 3 : 2,
-              interactive: clickable,
-            }}
-            eventHandlers={
-              clickable ? { click: () => onAreaClick?.(area) } : undefined
-            }
-          />
-        )
-      })}
-
-      {/* Coverage: thick semi-transparent path approximating mown area from the trail. */}
-      {coverage && trailLatLngs.length > 1 && (
-        <Polyline
-          positions={trailLatLngs}
-          pathOptions={{
-            color: '#34d399',
-            weight: 18,
-            opacity: 0.25,
-            lineCap: 'round',
-            lineJoin: 'round',
-          }}
-        />
-      )}
-
-      {/* Travelled trail */}
-      {showTrail && trailLatLngs.length > 1 && (
-        <Polyline
-          positions={trailLatLngs}
-          pathOptions={{ color: '#10b981', weight: 2, opacity: 0.5 }}
-        />
-      )}
-
-      {/* Docking stations */}
-      {dockingStations.map((ds) => (
-        <Marker
-          key={ds.id}
-          position={toLatLng(ds.position)}
-          icon={dockIcon(ds.heading ?? 0)}
-          eventHandlers={onDockClick ? { click: () => onDockClick() } : undefined}
-        />
-      ))}
-
-      {/* Robot */}
-      {position && (
-        <Marker
-          position={toLatLng(position)}
-          icon={robotIcon(position.heading)}
-          zIndexOffset={1000}
-        />
-      )}
+      <StaticLayers
+        onAreaClick={onAreaClick}
+        onDockClick={onDockClick}
+        highlightedAreaId={highlightedAreaId}
+      />
+      <DynamicLayers showTrail={showTrail} coverage={coverage} />
     </MapContainer>
   )
 }
