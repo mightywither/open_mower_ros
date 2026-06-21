@@ -373,6 +373,7 @@ export function MapEditor() {
           onAreaClick={selectArea}
           onDockClick={goHome}
           highlightedAreaId={selected?.id ?? null}
+          showMowDirection
         />
       </div>
     </div>

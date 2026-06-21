@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Footprints, Satellite, Wifi, RotateCcw } from 'lucide-react'
+import { Footprints, Satellite, Wifi, Compass, RotateCcw } from 'lucide-react'
 import { RobotMap } from '../components/RobotMap'
 import { useRobotStore } from '../store/robotStore'
 import { useMqttStore } from '../store/mqttStore'
@@ -17,7 +17,8 @@ const HEAT_LEGEND: Record<'gps' | 'wifi', { label: string; scale: string }> = {
   wifi: { label: 'Signal WiFi', scale: 'vert = fort · rouge = faible' },
 }
 
-type Overlay = 'coverage' | 'gps' | 'wifi'
+type Overlay = 'coverage' | 'gps' | 'wifi' | 'direction'
+const RESETTABLE: Overlay[] = ['coverage', 'gps', 'wifi']
 
 export function MapView() {
   const state = useRobotStore((s) => s.state)
@@ -26,6 +27,7 @@ export function MapView() {
     coverage: true,
     gps: false,
     wifi: false,
+    direction: false,
   })
 
   const toggle = (o: Overlay) => setOverlays((s) => ({ ...s, [o]: !s[o] }))
@@ -42,6 +44,7 @@ export function MapView() {
     { key: 'coverage', icon: <Footprints size={13} />, label: 'Couverture' },
     { key: 'gps', icon: <Satellite size={13} />, label: 'GPS' },
     { key: 'wifi', icon: <Wifi size={13} />, label: 'WiFi' },
+    { key: 'direction', icon: <Compass size={13} />, label: 'Direction' },
   ]
 
   return (
@@ -80,7 +83,7 @@ export function MapView() {
             )}
           >
             {icon} {label}
-            {overlays[key] && (
+            {overlays[key] && RESETTABLE.includes(key) && (
               <RotateCcw
                 size={12}
                 className="ml-1 text-slate-400 hover:text-white"
@@ -99,6 +102,7 @@ export function MapView() {
         coverage={overlays.coverage}
         showGps={overlays.gps}
         showWifi={overlays.wifi}
+        showMowDirection={overlays.direction}
       />
     </div>
   )

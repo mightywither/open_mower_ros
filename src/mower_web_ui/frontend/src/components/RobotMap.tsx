@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react'
+import { memo, useMemo, Fragment } from 'react'
 import L from 'leaflet'
 import { MapContainer, Polygon, Polyline, Marker, CircleMarker, Rectangle, useMap } from 'react-leaflet'
 import { useEffect, useRef } from 'react'
@@ -179,6 +179,80 @@ function WifiHeatmap() {
   return <ValueHeatmap data={wifi} colorFn={wifiColor} />
 }
 
+function arrowIcon(thetaRad: number) {
+  const deg = headingToCssDeg(thetaRad)
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:16px;height:16px;transform:rotate(${deg}deg);">
+      <svg viewBox="0 0 16 16"><polygon points="8,1 3,12 8,9 13,12" fill="#f1f5f9" stroke="#0f172a" stroke-width="0.5"/></svg>
+    </div>`,
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
+  })
+}
+
+// Auto-detected base mow angle: direction of the first outline edge longer than
+// 2 m (mirrors MowingBehavior). Returns radians (ENU, 0 = East).
+function autoBaseAngle(outline: MapPoint[]): number {
+  if (outline.length < 2) return 0
+  const first = outline[0]
+  for (const p of outline) {
+    const dx = p.x - first.x
+    const dy = p.y - first.y
+    if (Math.hypot(dx, dy) > 2) return Math.atan2(dy, dx)
+  }
+  return 0
+}
+
+// Per-zone mowing-direction arrows: solid for a forced angle, dashed for the
+// auto base angle.
+const MowDirectionLayer = memo(function MowDirectionLayer() {
+  const areas = useMapStore((s) => s.areas)
+
+  const items = useMemo(() => {
+    return areas
+      .filter((a) => a.properties.type === 'mow' && a.outline.length >= 3)
+      .map((a) => {
+        const xs = a.outline.map((p) => p.x)
+        const ys = a.outline.map((p) => p.y)
+        const cx = xs.reduce((s, v) => s + v, 0) / xs.length
+        const cy = ys.reduce((s, v) => s + v, 0) / ys.length
+        const span = Math.min(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys))
+        const len = Math.min(8, Math.max(1.5, span * 0.4))
+        const fixed = a.properties.fixed_angle ?? false
+        const theta = fixed ? ((a.properties.mow_angle ?? 0) * Math.PI) / 180 : autoBaseAngle(a.outline)
+        const dx = Math.cos(theta) * (len / 2)
+        const dy = Math.sin(theta) * (len / 2)
+        return {
+          id: a.id,
+          fixed,
+          theta,
+          p1: { x: cx - dx, y: cy - dy },
+          p2: { x: cx + dx, y: cy + dy },
+        }
+      })
+  }, [areas])
+
+  return (
+    <>
+      {items.map((it) => (
+        <Fragment key={it.id}>
+          <Polyline
+            positions={[toLatLng(it.p1), toLatLng(it.p2)]}
+            pathOptions={{
+              color: '#f1f5f9',
+              weight: 2,
+              opacity: 0.9,
+              dashArray: it.fixed ? undefined : '5,6',
+            }}
+          />
+          <Marker position={toLatLng(it.p2)} icon={arrowIcon(it.theta)} interactive={false} />
+        </Fragment>
+      ))}
+    </>
+  )
+})
+
 // Incident heatmap: red circles where the robot went into emergency.
 function IncidentsLayer() {
   const incidents = useIncidentsStore((s) => s.incidents)
@@ -207,6 +281,8 @@ export interface RobotMapProps {
   showGps?: boolean
   /** Overlay the WiFi-signal heatmap. */
   showWifi?: boolean
+  /** Show per-zone mowing-direction arrows. */
+  showMowDirection?: boolean
   /** Called when a mowing area is clicked. Enables hover/click affordance. */
   onAreaClick?: (area: MapArea) => void
   /** Called when a docking station is clicked. */
@@ -304,6 +380,7 @@ export function RobotMap({
   showIncidents = false,
   showGps = false,
   showWifi = false,
+  showMowDirection = false,
   onAreaClick,
   onDockClick,
   highlightedAreaId,
@@ -336,6 +413,7 @@ export function RobotMap({
         highlightedAreaId={highlightedAreaId}
       />
       {showIncidents && <IncidentsLayer />}
+      {showMowDirection && <MowDirectionLayer />}
       <DynamicLayers showTrail={showTrail} />
     </MapContainer>
   )
