@@ -12,8 +12,16 @@ import { simplifyRing, type XY } from '../shared/geometry'
 
 type AreaType = 'mow' | 'nav' | 'obstacle'
 
+interface ExportedArea {
+  type: AreaType
+  name: string
+  outline: XY[]
+  fixed_angle?: boolean
+  mow_angle?: number
+}
+
 interface ExportedMap {
-  areas: { type: AreaType; name: string; outline: XY[] }[]
+  areas: ExportedArea[]
   docking_stations: { position: { x: number; y: number }; heading: number }[]
 }
 
@@ -28,6 +36,8 @@ const SIMPLIFY_TOLERANCE = 0.15 // metres
 interface OmLayer extends L.Polygon {
   _omType?: AreaType
   _omName?: string
+  _omFixedAngle?: boolean
+  _omAngle?: number
 }
 
 interface EditorActions {
@@ -77,6 +87,8 @@ function EditorLayer({
       const layer = L.polygon(latlngs, styleFor(type)) as OmLayer
       layer._omType = type
       layer._omName = area.properties.name || ''
+      layer._omFixedAngle = area.properties.fixed_angle ?? false
+      layer._omAngle = area.properties.mow_angle ?? 0
       layer.addTo(map)
       layersRef.current.push(layer)
     })
@@ -116,7 +128,7 @@ function EditorLayer({
     map.on('pm:remove', onRemove)
 
     // Replace all editable layers with the given areas.
-    const loadAreas = (list: { type: AreaType; name: string; outline: XY[] }[]) => {
+    const loadAreas = (list: ExportedArea[]) => {
       layersRef.current.forEach((l) => l.remove())
       layersRef.current = []
       const bounds: L.LatLngTuple[] = []
@@ -126,6 +138,8 @@ function EditorLayer({
         const layer = L.polygon(latlngs, styleFor(area.type)) as OmLayer
         layer._omType = area.type
         layer._omName = area.name || ''
+        layer._omFixedAngle = area.fixed_angle ?? false
+        layer._omAngle = area.mow_angle ?? 0
         layer.addTo(map)
         layersRef.current.push(layer)
       })
@@ -137,6 +151,8 @@ function EditorLayer({
         type: layer._omType ?? 'mow',
         name: layer._omName ?? '',
         outline: ringToXY(layer),
+        fixed_angle: layer._omFixedAngle ?? false,
+        mow_angle: layer._omAngle ?? 0,
       })),
       docking_stations:
         importedDockingRef.current ??
@@ -165,6 +181,8 @@ function EditorLayer({
             type: (area.properties.type as AreaType) ?? 'mow',
             name: area.properties.name || '',
             outline: area.outline.map((p) => ({ x: p.x, y: p.y })),
+            fixed_angle: area.properties.fixed_angle ?? false,
+            mow_angle: area.properties.mow_angle ?? 0,
           })),
         )
       },

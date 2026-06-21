@@ -193,6 +193,12 @@ bool MowingBehavior::create_mowing_plan(int area_index) {
     ROS_INFO_STREAM("MowingBehavior: Auto-detected mowing angle + mowing angle offset: " << angle);
   }
 
+  // Per-area forced angle overrides the auto-detected/offset/increment angle.
+  if (mapSrv.response.area.fixed_angle) {
+    angle = mapSrv.response.area.mow_angle * (M_PI / 180.0);
+    ROS_INFO_STREAM("MowingBehavior: Using per-area fixed mow angle (deg): " << mapSrv.response.area.mow_angle);
+  }
+
   // calculate coverage
   slic3r_coverage_planner::PlanPath pathSrv;
   pathSrv.request.angle = angle;

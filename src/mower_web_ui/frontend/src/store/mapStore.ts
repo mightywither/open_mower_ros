@@ -7,7 +7,13 @@ export interface MapPoint {
 
 export interface MapArea {
   id: string
-  properties: { type: string; name: string }
+  properties: {
+    type: string
+    name: string
+    fixed_angle?: boolean
+    mow_angle?: number // degrees, absolute (relative to East)
+    outline_count?: number
+  }
   outline: MapPoint[]
 }
 

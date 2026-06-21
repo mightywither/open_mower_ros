@@ -106,7 +106,9 @@ class MowerMapMqtt:
             map_area = MapArea()
             map_area.name = area.get("name", "")
             map_area.area = to_polygon(area.get("outline", []))
-            map_area.outline_count = -1
+            map_area.outline_count = int(area.get("outline_count", -1))
+            map_area.fixed_angle = bool(area.get("fixed_angle", False))
+            map_area.mow_angle = float(area.get("mow_angle", 0.0))
             # Obstacles have no parent in the flattened map; attach them all to the
             # first area so they are preserved.
             if i == 0:

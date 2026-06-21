@@ -1,13 +1,19 @@
 import { useMemo, useState } from 'react'
-import { Layers, MapPin, Navigation, AlertTriangle, Anchor, Play, X, Scissors, Home } from 'lucide-react'
+import { Layers, MapPin, Navigation, AlertTriangle, Anchor, Play, X, Scissors, Home, Compass, Save, Check } from 'lucide-react'
 import { useMapStore, type MapArea, type MapPoint } from '../store/mapStore'
 import { useMowControlStore } from '../store/mowControlStore'
 import { useMqttStore } from '../store/mqttStore'
 import { useRobotStore } from '../store/robotStore'
+import { useMapEditStore } from '../store/mapEditStore'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { RobotMap } from '../components/RobotMap'
+
+interface AngleEdit {
+  fixed: boolean
+  angle: number
+}
 
 const TYPE_META: Record<
   string,
@@ -44,7 +50,51 @@ export function MapEditor() {
   const currentArea = useRobotStore((s) => s.area)
   const robotState = useRobotStore((s) => s.state)
   const publish = useMqttStore((s) => s.publish)
+  const { saving, setSaving, lastResult } = useMapEditStore()
   const [selected, setSelected] = useState<{ id: string; index: number; name: string } | null>(null)
+  // Per-area angle overrides being edited (keyed by area id).
+  const [angleEdits, setAngleEdits] = useState<Record<string, AngleEdit>>({})
+
+  function angleOf(area: MapArea): AngleEdit {
+    return (
+      angleEdits[area.id] ?? {
+        fixed: area.properties.fixed_angle ?? false,
+        angle: Math.round(area.properties.mow_angle ?? 0),
+      }
+    )
+  }
+  function setAngle(id: string, patch: Partial<AngleEdit>) {
+    setAngleEdits((prev) => {
+      const base = prev[id] ?? angleOf(areas.find((a) => a.id === id)!)
+      return { ...prev, [id]: { ...base, ...patch } }
+    })
+  }
+
+  // Apply angle changes by rebuilding the whole map via the map/edit relay.
+  function applyAngles() {
+    const payload = {
+      areas: areas.map((a) => {
+        const e = angleOf(a)
+        return {
+          type: a.properties.type,
+          name: a.properties.name || '',
+          outline: a.outline,
+          fixed_angle: a.properties.type === 'mow' ? e.fixed : false,
+          mow_angle: a.properties.type === 'mow' ? e.angle : 0,
+          outline_count: a.properties.outline_count ?? -1,
+        }
+      }),
+      docking_stations: dockingStations.map((ds) => ({
+        position: ds.position,
+        heading: ds.heading ?? 0,
+      })),
+    }
+    setSaving(true)
+    publish('map/edit', JSON.stringify(payload))
+    setAngleEdits({})
+  }
+
+  const anglesDirty = Object.keys(angleEdits).length > 0
 
   // "Go home": abort_mowing returns the robot to the docking station.
   // Only meaningful while mowing/paused (no firmware dock-from-idle action).
@@ -238,6 +288,72 @@ export function MapEditor() {
             </Card>
           )
         })}
+
+        {/* Per-area mowing angle */}
+        {grouped.mow.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-1.5">
+                <Compass size={13} /> Angle de tonte
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              <p className="text-[11px] text-slate-500">
+                Force un angle de tonte fixe pour une zone (sinon auto-détecté). 0° = Est, 90° = Nord.
+              </p>
+              {grouped.mow.map((area) => {
+                const e = angleOf(area)
+                return (
+                  <div key={area.id} className="rounded-lg border border-surface-2 p-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-sm text-white">
+                        {area.properties.name || `Zone ${area.id.slice(0, 6)}`}
+                      </span>
+                      <button
+                        onClick={() => setAngle(area.id, { fixed: !e.fixed })}
+                        className={`h-5 w-9 shrink-0 rounded-full transition-colors ${e.fixed ? 'bg-emerald-600' : 'bg-surface-2'}`}
+                      >
+                        <span
+                          className={`block h-4 w-4 rounded-full bg-white transition-transform ${e.fixed ? 'translate-x-4' : 'translate-x-0.5'}`}
+                        />
+                      </button>
+                    </div>
+                    {e.fixed && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <input
+                          type="range"
+                          min={0}
+                          max={179}
+                          step={5}
+                          value={e.angle}
+                          onChange={(ev) => setAngle(area.id, { angle: Number(ev.target.value) })}
+                          className="flex-1 accent-emerald-500"
+                        />
+                        <span className="w-10 text-right text-sm font-medium text-white">{e.angle}°</span>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+              <Button
+                variant="default"
+                size="sm"
+                disabled={!anglesDirty || saving}
+                onClick={applyAngles}
+              >
+                <Save size={14} /> {saving ? 'Application…' : 'Appliquer les angles'}
+              </Button>
+              {lastResult && (
+                <div
+                  className={`flex items-center gap-1.5 text-xs ${lastResult.ok ? 'text-emerald-400' : 'text-red-400'}`}
+                >
+                  {lastResult.ok ? <Check size={13} /> : <AlertTriangle size={13} />}
+                  {lastResult.ok ? 'Carte mise à jour.' : `Échec : ${lastResult.error}`}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {areas.length === 0 && (
           <div className="py-8 text-center text-sm text-slate-500">

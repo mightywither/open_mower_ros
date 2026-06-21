@@ -76,6 +76,8 @@ struct MapArea {
   bool active;
   Polygon outline;
   int outline_count = -1;
+  bool fixed_angle = false;
+  double mow_angle = 0.0;  // degrees, absolute (relative to East)
 };
 
 struct DockingStation {
@@ -116,6 +118,10 @@ void to_json(json& j, const MapArea& data) {
   properties["type"] = data.type;
   if (!data.active) properties["active"] = data.active;
   if (data.outline_count >= 0) properties["outline_count"] = data.outline_count;
+  if (data.fixed_angle) {
+    properties["fixed_angle"] = true;
+    properties["mow_angle"] = data.mow_angle;
+  }
   j["properties"] = properties;
   j["outline"] = data.outline;
 }
@@ -127,6 +133,8 @@ void from_json(const json& j, MapArea& data) {
   data.type = properties.value("type", "draft");
   data.active = properties.value("active", true);
   data.outline_count = properties.value("outline_count", -1);
+  data.fixed_angle = properties.value("fixed_angle", false);
+  data.mow_angle = properties.value("mow_angle", 0.0);
   j.at("outline").get_to(data.outline);
 }
 
@@ -250,6 +258,8 @@ mower_map::MapArea internalMapAreaToMower(const MapArea& area) {
   mower_map::MapArea result;
   result.name = area.name;
   result.outline_count = area.outline_count;
+  result.fixed_angle = area.fixed_angle;
+  result.mow_angle = area.mow_angle;
   // Leave area empty if it is not active
   if (area.active) {
     result.area = internalPolygonToGeometry(area.outline);
@@ -544,7 +554,11 @@ void readMapFromFile() {
 bool addMowingArea(mower_map::AddMowingAreaSrvRequest& req, mower_map::AddMowingAreaSrvResponse& res) {
   ROS_INFO_STREAM("Got addMowingArea call");
 
-  map_data.areas.push_back(mowerMapAreaToInternal(req.area.area, req.isNavigationArea ? "nav" : "mow", req.area.name));
+  MapArea area = mowerMapAreaToInternal(req.area.area, req.isNavigationArea ? "nav" : "mow", req.area.name);
+  area.outline_count = req.area.outline_count;
+  area.fixed_angle = req.area.fixed_angle;
+  area.mow_angle = req.area.mow_angle;
+  map_data.areas.push_back(area);
   for (const auto& obstacle : req.area.obstacles) {
     map_data.areas.push_back(mowerMapAreaToInternal(obstacle, "obstacle", ""));
   }
