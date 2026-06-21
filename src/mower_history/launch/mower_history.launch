@@ -1,0 +1,6 @@
+<launch>
+    <node pkg="mower_history" type="mower_history.py" name="mower_history" output="screen" respawn="true" respawn_delay="10">
+        <param name="broker_host" value="$(optenv OM_MQTT_HOST 127.0.0.1)"/>
+        <param name="broker_port" value="$(optenv OM_MQTT_PORT 1883)"/>
+    </node>
+</launch>

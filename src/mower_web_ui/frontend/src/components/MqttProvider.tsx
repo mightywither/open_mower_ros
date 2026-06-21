@@ -11,6 +11,8 @@ import { useMapEditStore } from '../store/mapEditStore'
 import { useStatsStore } from '../store/statsStore'
 import { useNotifyStore } from '../store/notifyStore'
 import { useSensorHistoryStore } from '../store/sensorHistoryStore'
+import { useHistoryStore } from '../store/historyStore'
+import { useIncidentsStore } from '../store/incidentsStore'
 
 export function MqttProvider({ children }: { children: React.ReactNode }) {
   const brokerUrl = useSettingsStore((s) => s.brokerUrl)
@@ -24,6 +26,9 @@ export function MqttProvider({ children }: { children: React.ReactNode }) {
   const setStatsState = useStatsStore((s) => s.setFromState)
   const setNotifyState = useNotifyStore((s) => s.setFromState)
   const recordHistory = useSensorHistoryStore((s) => s.record)
+  const setHistoryMetrics = useHistoryStore((s) => s.setMetrics)
+  const setHistoryResponse = useHistoryStore((s) => s.setResponse)
+  const setIncidents = useIncidentsStore((s) => s.setIncidents)
   const clientRef = useRef<MqttClient | null>(null)
 
   useEffect(() => {
@@ -50,6 +55,9 @@ export function MqttProvider({ children }: { children: React.ReactNode }) {
         'map/edit/result',
         'stats/json',
         'notify/state',
+        'history/metrics',
+        'history/response',
+        'incidents/json',
       ])
       // Load event history via RPC
       const reqId = Math.random().toString(36).slice(2)
@@ -98,6 +106,15 @@ export function MqttProvider({ children }: { children: React.ReactNode }) {
             break
           case 'notify/state':
             setNotifyState(data)
+            break
+          case 'history/metrics':
+            setHistoryMetrics((data as { metrics?: [] }).metrics ?? [])
+            break
+          case 'history/response':
+            setHistoryResponse(data as unknown as Parameters<typeof setHistoryResponse>[0])
+            break
+          case 'incidents/json':
+            setIncidents((data as { incidents?: [] }).incidents ?? [])
             break
           case 'position/json':
             updatePosition(data)

@@ -1,8 +1,9 @@
 import { memo, useMemo } from 'react'
 import L from 'leaflet'
-import { MapContainer, Polygon, Polyline, Marker, useMap } from 'react-leaflet'
+import { MapContainer, Polygon, Polyline, Marker, CircleMarker, useMap } from 'react-leaflet'
 import { useEffect, useRef } from 'react'
 import { useMapStore, type MapArea, type MapPoint } from '../store/mapStore'
+import { useIncidentsStore } from '../store/incidentsStore'
 
 // Local metric frame (ENU: x=East, y=North) -> Leaflet CRS.Simple.
 // CRS.Simple has lat increasing upward and lng increasing rightward, so
@@ -82,11 +83,30 @@ function FitBounds() {
   return null
 }
 
+// Incident heatmap: red circles where the robot went into emergency.
+function IncidentsLayer() {
+  const incidents = useIncidentsStore((s) => s.incidents)
+  return (
+    <>
+      {incidents.map((inc, i) => (
+        <CircleMarker
+          key={`${inc.t}-${i}`}
+          center={toLatLng(inc)}
+          radius={10}
+          pathOptions={{ color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.35, weight: 1 }}
+        />
+      ))}
+    </>
+  )
+}
+
 export interface RobotMapProps {
   /** Allow zoom/drag. Default true. */
   interactive?: boolean
   /** Show the robot's travelled trail. Default true. */
   showTrail?: boolean
+  /** Overlay the incident (emergency) heatmap. */
+  showIncidents?: boolean
   /** Called when a mowing area is clicked. Enables hover/click affordance. */
   onAreaClick?: (area: MapArea) => void
   /** Called when a docking station is clicked. */
@@ -193,6 +213,7 @@ function DynamicLayers({ showTrail, coverage }: { showTrail: boolean; coverage: 
 export function RobotMap({
   interactive = true,
   showTrail = true,
+  showIncidents = false,
   onAreaClick,
   onDockClick,
   highlightedAreaId,
@@ -220,6 +241,7 @@ export function RobotMap({
         onDockClick={onDockClick}
         highlightedAreaId={highlightedAreaId}
       />
+      {showIncidents && <IncidentsLayer />}
       <DynamicLayers showTrail={showTrail} coverage={coverage} />
     </MapContainer>
   )

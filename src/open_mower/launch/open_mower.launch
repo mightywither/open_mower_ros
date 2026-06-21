@@ -42,5 +42,7 @@
 
     <include file="$(find mower_map_mqtt)/launch/mower_map_mqtt.launch"/>
 
+    <include file="$(find mower_history)/launch/mower_history.launch"/>
+
     <include file="$(find open_mower)/launch/include/_params.launch"/>
 </launch>

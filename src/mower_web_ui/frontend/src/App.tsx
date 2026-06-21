@@ -11,6 +11,7 @@ import { Teleop } from './pages/Teleop'
 import { Sensors } from './pages/Sensors'
 import { Stats } from './pages/Stats'
 import { Planning } from './pages/Planning'
+import { History } from './pages/History'
 import { Events } from './pages/Events'
 import { Settings } from './pages/Settings'
 
@@ -31,6 +32,7 @@ export function App() {
             <Route path="/sensors" element={<Sensors />} />
             <Route path="/stats" element={<Stats />} />
             <Route path="/planning" element={<Planning />} />
+            <Route path="/history" element={<History />} />
             <Route path="/events" element={<Events />} />
             <Route path="/settings" element={<Settings />} />
           </Routes>
