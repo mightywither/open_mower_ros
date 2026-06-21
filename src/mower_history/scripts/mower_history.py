@@ -39,11 +39,73 @@ RESPONSE_TOPIC = "history/response"
 INCIDENTS_TOPIC = "incidents/json"
 COVERAGE_TOPIC = "coverage/json"
 COVERAGE_CMD_TOPIC = "coverage/cmd"
+GPS_TOPIC = "gps_quality/json"
+WIFI_TOPIC = "wifi/json"
 
 MAX_INCIDENTS = 1000
 COVERAGE_CELL = 0.5  # metres per coverage grid cell
 MAX_COVERAGE_CELLS = 30000
+FIELD_CELL = 1.0  # metres per GPS/WiFi heatmap cell
+MAX_FIELD_CELLS = 20000
+WIFI_POLL_S = 10  # how often to sample WiFi signal
 MOWING_STATES = {"AUTONOMOUS", "MOWING"}
+
+
+class FieldGrid:
+    """A persistent grid that keeps a running mean of a value per cell.
+    Used for the GPS-quality and WiFi-signal heatmaps."""
+
+    def __init__(self, path, cell):
+        self.path = path
+        self.cell = cell
+        self.data = {}  # (gx, gy) -> [sum, count]
+        self.dirty = False
+        self._load()
+
+    def add(self, x, y, value):
+        if value != value:  # NaN
+            return
+        if len(self.data) >= MAX_FIELD_CELLS:
+            return
+        key = (round(x / self.cell), round(y / self.cell))
+        s = self.data.get(key)
+        if s is None:
+            s = [0.0, 0]
+            self.data[key] = s
+        s[0] += value
+        s[1] += 1
+        self.dirty = True
+
+    def clear(self):
+        self.data = {}
+        self.dirty = True
+
+    def payload(self):
+        cells = [
+            [gx * self.cell, gy * self.cell, round(s[0] / s[1], 2)]
+            for (gx, gy), s in self.data.items()
+            if s[1] > 0
+        ]
+        return {"cell": self.cell, "cells": cells}
+
+    def _load(self):
+        try:
+            with open(self.path) as f:
+                for gx, gy, total, count in json.load(f).get("cells", []):
+                    self.data[(gx, gy)] = [total, count]
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            rospy.logwarn(f"mower_history: could not load field {self.path}: {e}")
+
+    def save(self):
+        try:
+            with open(self.path, "w") as f:
+                json.dump(
+                    {"cells": [[gx, gy, s[0], s[1]] for (gx, gy), s in self.data.items()]}, f
+                )
+        except Exception as e:
+            rospy.logwarn(f"mower_history: could not save field {self.path}: {e}")
 
 STEP = 60  # seconds between consolidated samples
 
@@ -92,6 +154,10 @@ class MowerHistory:
         self._covered = self._load_coverage()  # set of (gx, gy) int grid indices
         self._coverage_dirty = False
 
+        # GPS-quality and WiFi-signal heatmaps (running mean per cell)
+        self._gps = FieldGrid(os.path.join(history_dir(), "gps_field.json"), FIELD_CELL)
+        self._wifi = FieldGrid(os.path.join(history_dir(), "wifi_field.json"), FIELD_CELL)
+
         self._mqtt = mqtt.Client()
         self._mqtt.on_connect = self._on_connect
         self._mqtt.on_message = self._on_message
@@ -99,8 +165,11 @@ class MowerHistory:
 
         # Flush buffered values into the RRDs once per step.
         rospy.Timer(rospy.Duration(STEP), lambda _e: self._flush())
-        # Persist/publish coverage more often so the map fills in promptly.
+        # Persist/publish coverage + heatmaps more often so the maps fill promptly.
         rospy.Timer(rospy.Duration(15), lambda _e: self._flush_coverage())
+        rospy.Timer(rospy.Duration(15), lambda _e: self._flush_fields())
+        # Sample WiFi signal at the current position.
+        rospy.Timer(rospy.Duration(WIFI_POLL_S), lambda _e: self._sample_wifi())
         rospy.loginfo("mower_history: started")
 
     # ----- MQTT -----
@@ -121,6 +190,7 @@ class MowerHistory:
         self._publish_metrics()
         self._publish_incidents()
         self._publish_coverage()
+        self._publish_fields()
 
     def _on_message(self, client, userdata, msg):
         topic = msg.topic
@@ -153,11 +223,26 @@ class MowerHistory:
                 state = str(data.get("current_state", ""))
                 self._track_incident(emergency, state)
                 self._mowing = state in MOWING_STATES and not emergency
+                # GPS-quality heatmap: position accuracy (m, lower = better fix).
+                pose = data.get("pose") or {}
+                if all(isinstance(pose.get(k), (int, float)) for k in ("x", "y", "pos_accuracy")):
+                    self._gps.add(pose["x"], pose["y"], pose["pos_accuracy"])
             elif topic == COVERAGE_CMD_TOPIC:
-                if json.loads(msg.payload.decode("utf-8")).get("cmd") == "clear":
-                    self._covered = set()
-                    self._save_coverage()
-                    self._publish_coverage()
+                cmd = json.loads(msg.payload.decode("utf-8"))
+                if cmd.get("cmd") == "clear":
+                    target = cmd.get("target", "coverage")
+                    if target in ("coverage", "all"):
+                        self._covered = set()
+                        self._save_coverage()
+                        self._publish_coverage()
+                    if target in ("gps", "all"):
+                        self._gps.clear()
+                        self._gps.save()
+                    if target in ("wifi", "all"):
+                        self._wifi.clear()
+                        self._wifi.save()
+                    if target in ("gps", "wifi", "all"):
+                        self._publish_fields()
             elif topic == REQUEST_TOPIC:
                 self._handle_request(json.loads(msg.payload.decode("utf-8")))
         except (ValueError, KeyError, json.JSONDecodeError):
@@ -287,6 +372,42 @@ class MowerHistory:
             self._coverage_dirty = False
             self._save_coverage()
             self._publish_coverage()
+
+    # ----- GPS / WiFi heatmaps -----
+    def _read_wifi_dbm(self):
+        # /proc/net/wireless reflects the host's WiFi (container is network_mode host).
+        try:
+            with open("/proc/net/wireless") as f:
+                lines = f.readlines()[2:]  # skip 2 header lines
+        except OSError:
+            return None
+        for line in lines:
+            parts = line.split()
+            if len(parts) >= 4:
+                try:
+                    # columns: iface: status link level noise ...
+                    return float(parts[3].rstrip("."))
+                except ValueError:
+                    continue
+        return None
+
+    def _sample_wifi(self, *_):
+        if self._pos is None:
+            return
+        dbm = self._read_wifi_dbm()
+        if dbm is not None:
+            self._wifi.add(self._pos[0], self._pos[1], dbm)
+
+    def _publish_fields(self):
+        self._mqtt.publish(GPS_TOPIC, json.dumps(self._gps.payload()), retain=True)
+        self._mqtt.publish(WIFI_TOPIC, json.dumps(self._wifi.payload()), retain=True)
+
+    def _flush_fields(self, *_):
+        if self._gps.dirty or self._wifi.dirty:
+            self._gps.dirty = self._wifi.dirty = False
+            self._gps.save()
+            self._wifi.save()
+            self._publish_fields()
 
     # ----- serving -----
     def _publish_metrics(self):

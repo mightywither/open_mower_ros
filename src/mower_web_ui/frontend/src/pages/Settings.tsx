@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Save, RefreshCw, Wifi, Bot, CloudRain, Bell } from 'lucide-react'
+import { Save, RefreshCw, Wifi, Bot, CloudRain, Bell, SlidersHorizontal } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
 import { useSettingsStore } from '../store/settingsStore'
 import { useMqttStore } from '../store/mqttStore'
 import { useMapStore } from '../store/mapStore'
-import { useSchedulerStore } from '../store/schedulerStore'
+import { useSchedulerStore, type AdvancedParam } from '../store/schedulerStore'
 import { useNotifyStore, NOTIFY_EVENT_KEYS, type NotifyEvents } from '../store/notifyStore'
 
 const AUTO_MODES = [
@@ -57,6 +57,52 @@ function LabeledInput({
   )
 }
 
+function ParamRow({
+  param,
+  onChange,
+}: {
+  param: AdvancedParam
+  onChange: (value: number | boolean) => void
+}) {
+  if (param.type === 'bool') {
+    const on = param.value === true
+    return (
+      <div className="flex items-center justify-between gap-2 py-1.5">
+        <span className="text-sm text-slate-300">{param.label}</span>
+        <button
+          onClick={() => onChange(!on)}
+          className={`h-6 w-11 shrink-0 rounded-full transition-colors ${on ? 'bg-emerald-600' : 'bg-surface-2'}`}
+        >
+          <span
+            className={`block h-5 w-5 rounded-full bg-white transition-transform ${on ? 'translate-x-5' : 'translate-x-0.5'}`}
+          />
+        </button>
+      </div>
+    )
+  }
+  const value = typeof param.value === 'number' ? param.value : (param.min ?? 0)
+  return (
+    <div className="flex flex-col gap-1 py-1.5">
+      <div className="flex items-center justify-between text-sm text-slate-300">
+        <span>{param.label}</span>
+        <span className="font-medium text-white">
+          {value}
+          {param.unit ? ` ${param.unit}` : ''}
+        </span>
+      </div>
+      <input
+        type="range"
+        min={param.min}
+        max={param.max}
+        step={param.step ?? (param.type === 'int' ? 1 : 0.01)}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full accent-emerald-500"
+      />
+    </div>
+  )
+}
+
 export function Settings() {
   const { brokerUrl, setBrokerUrl } = useSettingsStore()
   const connected = useMqttStore((s) => s.connected)
@@ -64,6 +110,7 @@ export function Settings() {
   const clearTrail = useMapStore((s) => s.clearTrail)
   const autoMode = useSchedulerStore((s) => s.autoMode)
   const rainMode = useSchedulerStore((s) => s.rainMode)
+  const advancedParams = useSchedulerStore((s) => s.params)
   const schedulerLoaded = useSchedulerStore((s) => s.loaded)
 
   const notify = useNotifyStore()
@@ -84,6 +131,10 @@ export function Settings() {
 
   function setRainMode(value: number) {
     publish('scheduler/cmd', JSON.stringify({ cmd: 'set_param', name: 'rain_mode', value }))
+  }
+
+  function setParam(name: string, value: number | boolean) {
+    publish('scheduler/cmd', JSON.stringify({ cmd: 'set_param', name, value }))
   }
 
   function toggleNotifyEvent(key: keyof NotifyEvents) {
@@ -278,6 +329,37 @@ export function Settings() {
           )}
         </CardContent>
       </Card>
+
+      {/* Advanced robot parameters */}
+      {advancedParams.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-1.5">
+              <SlidersHorizontal size={13} /> Paramètres avancés
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            {Array.from(new Set(advancedParams.map((p) => p.group))).map((group) => (
+              <div key={group} className="flex flex-col">
+                <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  {group}
+                </div>
+                <div className="divide-y divide-surface-2">
+                  {advancedParams
+                    .filter((p) => p.group === group)
+                    .map((p) => (
+                      <ParamRow key={p.name} param={p} onChange={(v) => setParam(p.name, v)} />
+                    ))}
+                </div>
+              </div>
+            ))}
+            <p className="text-xs text-slate-500">
+              Réglages du firmware (angle de tonte, sortie/entrée du dock, précision GPS requise…).
+              Appliqués immédiatement et conservés au redémarrage.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Map */}
       <Card>

@@ -14,6 +14,7 @@ import { useSensorHistoryStore } from '../store/sensorHistoryStore'
 import { useHistoryStore } from '../store/historyStore'
 import { useIncidentsStore } from '../store/incidentsStore'
 import { useCoverageStore } from '../store/coverageStore'
+import { useFieldsStore } from '../store/fieldsStore'
 
 export function MqttProvider({ children }: { children: React.ReactNode }) {
   const brokerUrl = useSettingsStore((s) => s.brokerUrl)
@@ -31,6 +32,8 @@ export function MqttProvider({ children }: { children: React.ReactNode }) {
   const setHistoryResponse = useHistoryStore((s) => s.setResponse)
   const setIncidents = useIncidentsStore((s) => s.setIncidents)
   const setCoverage = useCoverageStore((s) => s.setFromState)
+  const setGpsField = useFieldsStore((s) => s.setGps)
+  const setWifiField = useFieldsStore((s) => s.setWifi)
   const clientRef = useRef<MqttClient | null>(null)
 
   useEffect(() => {
@@ -61,6 +64,8 @@ export function MqttProvider({ children }: { children: React.ReactNode }) {
         'history/response',
         'incidents/json',
         'coverage/json',
+        'gps_quality/json',
+        'wifi/json',
       ])
       // Load event history via RPC
       const reqId = Math.random().toString(36).slice(2)
@@ -121,6 +126,12 @@ export function MqttProvider({ children }: { children: React.ReactNode }) {
             break
           case 'coverage/json':
             setCoverage(data as Parameters<typeof setCoverage>[0])
+            break
+          case 'gps_quality/json':
+            setGpsField(data as unknown as Parameters<typeof setGpsField>[0])
+            break
+          case 'wifi/json':
+            setWifiField(data as unknown as Parameters<typeof setWifiField>[0])
             break
           case 'position/json':
             updatePosition(data)

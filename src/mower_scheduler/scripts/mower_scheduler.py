@@ -33,10 +33,40 @@ ACTION_START = "mower_logic:idle/start_mowing"
 ACTION_HOME = "mower_logic:idle/go_home"
 ACTION_SKIP_AREA = "mower_logic:mowing/skip_area"
 
-# dynamic_reconfigure params we expose/control, with their valid ranges.
-PARAM_RANGES = {
-    "automatic_mode": (0, 2),
-    "rain_mode": (0, 3),
+# Curated advanced dynamic_reconfigure params exposed to the web UI Settings
+# (automatic_mode/rain_mode have dedicated selectors and are handled separately).
+ADVANCED_PARAMS = [
+    {"name": "mow_angle_offset", "label": "Angle de tonte (offset)", "type": "double",
+     "min": -180, "max": 180, "step": 5, "unit": "°", "group": "Tonte"},
+    {"name": "mow_angle_offset_is_absolute", "label": "Angle absolu (sinon relatif à la zone)",
+     "type": "bool", "group": "Tonte"},
+    {"name": "mow_angle_increment", "label": "Incrément d'angle par cycle", "type": "double",
+     "min": 0, "max": 180, "step": 5, "unit": "°", "group": "Tonte"},
+    {"name": "outline_count", "label": "Tours de contour", "type": "int",
+     "min": 0, "max": 10, "step": 1, "group": "Tonte"},
+    {"name": "tool_width", "label": "Largeur de coupe", "type": "double",
+     "min": 0.1, "max": 1.0, "step": 0.01, "unit": "m", "group": "Tonte"},
+    {"name": "undock_distance", "label": "Distance de sortie du dock", "type": "double",
+     "min": 0, "max": 10, "step": 0.5, "unit": "m", "group": "Dock"},
+    {"name": "undock_angle", "label": "Angle de sortie du dock", "type": "double",
+     "min": -90, "max": 90, "step": 5, "unit": "°", "group": "Dock"},
+    {"name": "docking_distance", "label": "Distance d'entrée au dock", "type": "double",
+     "min": 0, "max": 10, "step": 0.5, "unit": "m", "group": "Dock"},
+    {"name": "docking_approach_distance", "label": "Distance de pré-approche", "type": "double",
+     "min": 0, "max": 5, "step": 0.1, "unit": "m", "group": "Dock"},
+    {"name": "max_position_accuracy", "label": "Précision GPS min. requise", "type": "double",
+     "min": 0.01, "max": 1.0, "step": 0.01, "unit": "m", "group": "GPS"},
+    {"name": "motor_hot_temperature", "label": "Temp. moteur — pause", "type": "double",
+     "min": 20, "max": 150, "step": 5, "unit": "°C", "group": "Sécurité"},
+    {"name": "motor_cold_temperature", "label": "Temp. moteur — reprise", "type": "double",
+     "min": 20, "max": 150, "step": 5, "unit": "°C", "group": "Sécurité"},
+]
+
+# All settable params (name -> spec), incl. the two mode params.
+SETTABLE = {
+    "automatic_mode": {"type": "int", "min": 0, "max": 2},
+    "rain_mode": {"type": "int", "min": 0, "max": 3},
+    **{p["name"]: p for p in ADVANCED_PARAMS},
 }
 
 
@@ -63,6 +93,8 @@ class MowerScheduler:
         # Desired dynamic_reconfigure params (name->value), persisted and
         # re-applied on (re)connect so the mode survives a mower_logic respawn.
         self._desired_params = {}
+        # Current values of the advanced params (from dynamic_reconfigure).
+        self._param_values = {}
         self._last_fired = {}  # entry_id+kind -> "YYYY-MM-DD HH:MM" to debounce within the minute
 
         # Live area tracking from mower_logic/current_state, for area_index targeting.
@@ -147,14 +179,32 @@ class MowerScheduler:
         with self._lock:
             self._auto_mode = int(config.get("automatic_mode", self._auto_mode or 0))
             self._rain_mode = int(config.get("rain_mode", self._rain_mode or 0))
+            # Capture current values of the advanced params for the UI.
+            for p in ADVANCED_PARAMS:
+                if p["name"] in config:
+                    self._param_values[p["name"]] = config[p["name"]]
         self._publish_state()
 
+    def _coerce(self, spec, value):
+        t = spec["type"]
+        if t == "bool":
+            return bool(value)
+        if t == "int":
+            v = int(round(float(value)))
+        else:
+            v = float(value)
+        if "min" in spec:
+            v = max(spec["min"], v)
+        if "max" in spec:
+            v = min(spec["max"], v)
+        return v
+
     def _set_param(self, name, value):
-        if name not in PARAM_RANGES:
+        spec = SETTABLE.get(name)
+        if spec is None:
             rospy.logwarn(f"mower_scheduler: refusing to set unknown param '{name}'")
             return
-        lo, hi = PARAM_RANGES[name]
-        value = max(lo, min(hi, int(value)))
+        value = self._coerce(spec, value)
         # Remember the desired value so it persists and is re-applied on respawn.
         self._desired_params[name] = value
         self._save()
@@ -206,11 +256,16 @@ class MowerScheduler:
         self._publish_state()
 
     def _publish_state(self):
+        params = [
+            {**p, "value": self._param_values.get(p["name"])}
+            for p in ADVANCED_PARAMS
+        ]
         state = {
             "enabled": self._enabled,
             "auto_mode": self._auto_mode,
             "automatic_mode": self._auto_mode,
             "rain_mode": self._rain_mode,
+            "params": params,
             "schedule": self._schedule,
             "ts": datetime.now().isoformat(timespec="seconds"),
         }

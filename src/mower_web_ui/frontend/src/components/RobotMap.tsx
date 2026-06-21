@@ -5,8 +5,25 @@ import { useEffect, useRef } from 'react'
 import { useMapStore, type MapArea, type MapPoint } from '../store/mapStore'
 import { useIncidentsStore } from '../store/incidentsStore'
 import { useCoverageStore } from '../store/coverageStore'
+import { useFieldsStore, type FieldData } from '../store/fieldsStore'
 
-const MAX_DISPLAY_CELLS = 8000 // cap rendered coverage squares for performance
+const MAX_DISPLAY_CELLS = 8000 // cap rendered coverage/heatmap squares for performance
+
+// GPS accuracy in metres: low = good (green) -> high = bad (red).
+function gpsColor(accuracyM: number): string {
+  if (accuracyM <= 0.1) return '#10b981'
+  if (accuracyM <= 0.25) return '#84cc16'
+  if (accuracyM <= 0.5) return '#f59e0b'
+  return '#ef4444'
+}
+
+// WiFi signal in dBm: high = good (green) -> low = bad (red).
+function wifiColor(dbm: number): string {
+  if (dbm >= -55) return '#10b981'
+  if (dbm >= -67) return '#84cc16'
+  if (dbm >= -75) return '#f59e0b'
+  return '#ef4444'
+}
 
 // Local metric frame (ENU: x=East, y=North) -> Leaflet CRS.Simple.
 // CRS.Simple has lat increasing upward and lng increasing rightward, so
@@ -119,6 +136,49 @@ const CoverageLayer = memo(function CoverageLayer() {
   )
 })
 
+// Value heatmap (GPS quality / WiFi signal): squares coloured by their value.
+function ValueHeatmap({ data, colorFn }: { data: FieldData; colorFn: (v: number) => string }) {
+  const rects = useMemo(() => {
+    const half = data.cell / 2
+    const cells = data.cells
+    const stride = cells.length > MAX_DISPLAY_CELLS ? Math.ceil(cells.length / MAX_DISPLAY_CELLS) : 1
+    const out: { bounds: L.LatLngBoundsLiteral; color: string }[] = []
+    for (let i = 0; i < cells.length; i += stride) {
+      const [x, y, v] = cells[i]
+      out.push({
+        bounds: [
+          [y - half, x - half],
+          [y + half, x + half],
+        ],
+        color: colorFn(v),
+      })
+    }
+    return out
+  }, [data, colorFn])
+
+  return (
+    <>
+      {rects.map((r, i) => (
+        <Rectangle
+          key={i}
+          bounds={r.bounds}
+          pathOptions={{ stroke: false, fillColor: r.color, fillOpacity: 0.45 }}
+        />
+      ))}
+    </>
+  )
+}
+
+function GpsHeatmap() {
+  const gps = useFieldsStore((s) => s.gps)
+  return <ValueHeatmap data={gps} colorFn={gpsColor} />
+}
+
+function WifiHeatmap() {
+  const wifi = useFieldsStore((s) => s.wifi)
+  return <ValueHeatmap data={wifi} colorFn={wifiColor} />
+}
+
 // Incident heatmap: red circles where the robot went into emergency.
 function IncidentsLayer() {
   const incidents = useIncidentsStore((s) => s.incidents)
@@ -143,6 +203,10 @@ export interface RobotMapProps {
   showTrail?: boolean
   /** Overlay the incident (emergency) heatmap. */
   showIncidents?: boolean
+  /** Overlay the GPS-quality heatmap. */
+  showGps?: boolean
+  /** Overlay the WiFi-signal heatmap. */
+  showWifi?: boolean
   /** Called when a mowing area is clicked. Enables hover/click affordance. */
   onAreaClick?: (area: MapArea) => void
   /** Called when a docking station is clicked. */
@@ -238,6 +302,8 @@ export function RobotMap({
   interactive = true,
   showTrail = true,
   showIncidents = false,
+  showGps = false,
+  showWifi = false,
   onAreaClick,
   onDockClick,
   highlightedAreaId,
@@ -262,6 +328,8 @@ export function RobotMap({
     >
       <FitBounds />
       {coverage && <CoverageLayer />}
+      {showGps && <GpsHeatmap />}
+      {showWifi && <WifiHeatmap />}
       <StaticLayers
         onAreaClick={onAreaClick}
         onDockClick={onDockClick}
