@@ -100,7 +100,10 @@ class MowerStats:
 
     # ----- session tracking -----
     def _on_status(self, msg):
-        is_mowing = msg.state_name == MOWING_STATE
+        # Only count time while actually mowing — not while latched in an
+        # emergency/error (the robot is stopped even if the behavior is still
+        # nominally "MOWING").
+        is_mowing = msg.state_name == MOWING_STATE and not msg.emergency
         changed = False
         with self._lock:
             if is_mowing and not self._mowing:
