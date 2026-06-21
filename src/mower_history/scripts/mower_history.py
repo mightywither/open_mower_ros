@@ -47,34 +47,35 @@ COVERAGE_CELL = 0.5  # metres per coverage grid cell
 MAX_COVERAGE_CELLS = 30000
 FIELD_CELL = 1.0  # metres per GPS/WiFi heatmap cell
 MAX_FIELD_CELLS = 20000
+FIELD_EMA_ALPHA = 0.2  # EMA weight of each new sample (recent-biased average)
 WIFI_POLL_S = 5  # fallback WiFi sampling while stationary
 WIFI_MIN_INTERVAL = 1.0  # min seconds between movement-driven WiFi samples
 MOWING_STATES = {"AUTONOMOUS", "MOWING"}
 
 
 class FieldGrid:
-    """A persistent grid that keeps a running mean of a value per cell.
-    Used for the GPS-quality and WiFi-signal heatmaps."""
+    """A persistent grid that keeps an exponential moving average (EMA) of a
+    value per cell, so recent measurements dominate and the past is forgotten
+    progressively. Used for the GPS-quality and WiFi-signal heatmaps."""
 
     def __init__(self, path, cell):
         self.path = path
         self.cell = cell
-        self.data = {}  # (gx, gy) -> [sum, count]
+        self.data = {}  # (gx, gy) -> ema value (float)
         self.dirty = False
         self._load()
 
     def add(self, x, y, value):
         if value != value:  # NaN
             return
-        if len(self.data) >= MAX_FIELD_CELLS:
-            return
         key = (round(x / self.cell), round(y / self.cell))
-        s = self.data.get(key)
-        if s is None:
-            s = [0.0, 0]
-            self.data[key] = s
-        s[0] += value
-        s[1] += 1
+        prev = self.data.get(key)
+        if prev is None:
+            if len(self.data) >= MAX_FIELD_CELLS:
+                return
+            self.data[key] = float(value)
+        else:
+            self.data[key] = FIELD_EMA_ALPHA * float(value) + (1.0 - FIELD_EMA_ALPHA) * prev
         self.dirty = True
 
     def clear(self):
@@ -82,18 +83,14 @@ class FieldGrid:
         self.dirty = True
 
     def payload(self):
-        cells = [
-            [gx * self.cell, gy * self.cell, round(s[0] / s[1], 2)]
-            for (gx, gy), s in self.data.items()
-            if s[1] > 0
-        ]
+        cells = [[gx * self.cell, gy * self.cell, round(v, 2)] for (gx, gy), v in self.data.items()]
         return {"cell": self.cell, "cells": cells}
 
     def _load(self):
         try:
             with open(self.path) as f:
-                for gx, gy, total, count in json.load(f).get("cells", []):
-                    self.data[(gx, gy)] = [total, count]
+                for gx, gy, value in json.load(f).get("cells", []):
+                    self.data[(gx, gy)] = value
         except FileNotFoundError:
             pass
         except Exception as e:
@@ -102,9 +99,7 @@ class FieldGrid:
     def save(self):
         try:
             with open(self.path, "w") as f:
-                json.dump(
-                    {"cells": [[gx, gy, s[0], s[1]] for (gx, gy), s in self.data.items()]}, f
-                )
+                json.dump({"cells": [[gx, gy, v] for (gx, gy), v in self.data.items()]}, f)
         except Exception as e:
             rospy.logwarn(f"mower_history: could not save field {self.path}: {e}")
 
