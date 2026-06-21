@@ -3,7 +3,7 @@ import L from 'leaflet'
 import { MapContainer, useMap } from 'react-leaflet'
 import '@geoman-io/leaflet-geoman-free'
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css'
-import { Save, Wand2, RotateCcw, Check, AlertTriangle, Pencil } from 'lucide-react'
+import { Save, Wand2, RotateCcw, Check, AlertTriangle, Pencil, Download, Upload } from 'lucide-react'
 import { useMapStore, type MapArea } from '../store/mapStore'
 import { useMqttStore } from '../store/mqttStore'
 import { useMapEditStore } from '../store/mapEditStore'
@@ -11,6 +11,11 @@ import { Button } from '../components/ui/button'
 import { simplifyRing, type XY } from '../shared/geometry'
 
 type AreaType = 'mow' | 'nav' | 'obstacle'
+
+interface ExportedMap {
+  areas: { type: AreaType; name: string; outline: XY[] }[]
+  docking_stations: { position: { x: number; y: number }; heading: number }[]
+}
 
 const TYPE_COLOR: Record<AreaType, string> = {
   mow: '#10b981',
@@ -29,6 +34,8 @@ interface EditorActions {
   simplify: () => void
   save: () => void
   reload: () => void
+  exportMap: () => ExportedMap
+  importMap: (data: ExportedMap) => void
 }
 
 // ENU <-> Leaflet CRS.Simple: lat = y (North), lng = x (East).
@@ -53,6 +60,8 @@ function EditorLayer({
 }) {
   const map = useMap()
   const layersRef = useRef<OmLayer[]>([])
+  // Docking stations to save: live from the robot, unless an import overrides them.
+  const importedDockingRef = useRef<ExportedMap['docking_stations'] | null>(null)
   const areas = useMapStore.getState().areas
   const dockingStations = useMapStore((s) => s.dockingStations)
   const publish = useMqttStore((s) => s.publish)
@@ -106,6 +115,34 @@ function EditorLayer({
     map.on('pm:create', onCreate)
     map.on('pm:remove', onRemove)
 
+    // Replace all editable layers with the given areas.
+    const loadAreas = (list: { type: AreaType; name: string; outline: XY[] }[]) => {
+      layersRef.current.forEach((l) => l.remove())
+      layersRef.current = []
+      const bounds: L.LatLngTuple[] = []
+      list.forEach((area) => {
+        const latlngs = xyToLatLngs(area.outline)
+        bounds.push(...latlngs)
+        const layer = L.polygon(latlngs, styleFor(area.type)) as OmLayer
+        layer._omType = area.type
+        layer._omName = area.name || ''
+        layer.addTo(map)
+        layersRef.current.push(layer)
+      })
+      if (bounds.length) map.fitBounds(L.latLngBounds(bounds), { padding: [30, 30] })
+    }
+
+    const buildPayload = (): ExportedMap => ({
+      areas: layersRef.current.map((layer) => ({
+        type: layer._omType ?? 'mow',
+        name: layer._omName ?? '',
+        outline: ringToXY(layer),
+      })),
+      docking_stations:
+        importedDockingRef.current ??
+        dockingStations.map((ds) => ({ position: ds.position, heading: ds.heading ?? 0 })),
+    })
+
     actionsRef.current = {
       simplify: () => {
         layersRef.current.forEach((layer) => {
@@ -118,32 +155,23 @@ function EditorLayer({
         })
       },
       save: () => {
-        const payloadAreas = layersRef.current.map((layer) => ({
-          type: layer._omType ?? 'mow',
-          name: layer._omName ?? '',
-          outline: ringToXY(layer),
-        }))
-        const payload = {
-          areas: payloadAreas,
-          docking_stations: dockingStations.map((ds) => ({
-            position: ds.position,
-            heading: ds.heading ?? 0,
-          })),
-        }
         setSaving(true)
-        publish('map/edit', JSON.stringify(payload))
+        publish('map/edit', JSON.stringify(buildPayload()))
       },
       reload: () => {
-        layersRef.current.forEach((l) => l.remove())
-        layersRef.current = []
-        useMapStore.getState().areas.forEach((area) => {
-          const type = (area.properties.type as AreaType) ?? 'mow'
-          const layer = L.polygon(xyToLatLngs(area.outline), styleFor(type)) as OmLayer
-          layer._omType = type
-          layer._omName = area.properties.name || ''
-          layer.addTo(map)
-          layersRef.current.push(layer)
-        })
+        importedDockingRef.current = null
+        loadAreas(
+          useMapStore.getState().areas.map((area) => ({
+            type: (area.properties.type as AreaType) ?? 'mow',
+            name: area.properties.name || '',
+            outline: area.outline.map((p) => ({ x: p.x, y: p.y })),
+          })),
+        )
+      },
+      exportMap: buildPayload,
+      importMap: (data) => {
+        loadAreas(data.areas ?? [])
+        importedDockingRef.current = data.docking_stations ?? null
       },
     }
 
@@ -166,10 +194,37 @@ export function MapEdit() {
   const [newType, setNewType] = useState<AreaType>('mow')
   const connected = useMqttStore((s) => s.connected)
   const { saving, lastResult } = useMapEditStore()
+  const fileRef = useRef<HTMLInputElement>(null)
 
   function chooseType(t: AreaType) {
     setNewType(t)
     newTypeRef.current = t
+  }
+
+  function handleExport() {
+    const data = actionsRef.current?.exportMap()
+    if (!data) return
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `openmower-map-${new Date().toISOString().slice(0, 10)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = '' // allow re-importing the same file
+    if (!file) return
+    file
+      .text()
+      .then((text) => {
+        const data = JSON.parse(text)
+        if (!data || !Array.isArray(data.areas)) throw new Error('format invalide')
+        actionsRef.current?.importMap(data)
+      })
+      .catch((err) => alert(`Import impossible : ${err.message ?? err}`))
   }
 
   return (
@@ -202,6 +257,19 @@ export function MapEdit() {
         </Button>
         <Button variant="ghost" size="sm" onClick={() => actionsRef.current?.reload()}>
           <RotateCcw size={14} /> Recharger
+        </Button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/json,.json"
+          className="hidden"
+          onChange={handleImportFile}
+        />
+        <Button variant="ghost" size="sm" onClick={() => fileRef.current?.click()}>
+          <Upload size={14} /> Importer
+        </Button>
+        <Button variant="ghost" size="sm" onClick={handleExport}>
+          <Download size={14} /> Exporter
         </Button>
         <Button
           variant="default"
